@@ -89,7 +89,7 @@ Likely to be done, so ordered by value:
 4. **Auth** (done: `client_credentials` as `authorizeApp()`, `getAuthorizationUrl()`, `pollDevice()` using the client's injectable `sleep`/`now`). Persisting a pending device code across restarts stays in the wrapper (see wrapping.md #6).
 5. **Pagination** (done for `offset`/`limit`, 38 operations: `client.paginate`). Cursor endpoints (`page.id`, `from`/`after`; about 8 operations) are left to callers until someone needs them.
 6. **Testing helpers** (done: `allegro-rest-client/testing`, `mockAllegro`). A recorded-fixture mode is not built; add it if people ask.
-7. **Docs.** Quickstart per auth flow; recipes (upload an image, download a label, paginate offers, handle 429, multiple accounts via a shared-config factory); typedoc reference.
+7. **Docs** (done: [recipes.md](recipes.md) with a quickstart per flow, 429 and multiple accounts; upload/label/pagination are in the README. **Not done:** typedoc reference, which would add a dev dependency; the typed `paths` and doc comments in `src/types.ts` carry the reference for now). Original plan: Quickstart per auth flow; recipes (upload an image, download a label, paginate offers, handle 429, multiple accounts via a shared-config factory); typedoc reference.
 8. **Release hygiene.** Changesets, changelog, npm provenance, public-API surface snapshot (api-extractor or similar), deprecation runtime warnings, scheduled workflow that opens a PR when the upstream spec changes, TypeScript 7 canary job.
 
 ## Phase 3: ideas
