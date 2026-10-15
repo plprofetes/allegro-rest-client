@@ -4,7 +4,7 @@ A small, dependency-free client for the [Allegro REST API](https://developer.all
 
 - Node **22+**, zero runtime dependencies, native `fetch`
 - Works with CommonJS and ESM; ships its own types
-- Maintenance docs: [runbooks](docs/runbooks.md) · roadmap: [modernization plan](docs/modernization-plan.md)
+- Docs: [what to wrap around it](docs/wrapping.md) · [runbooks](docs/runbooks.md) · [roadmap](docs/modernization-plan.md)
 
 > The library uses the global `fetch`, `Response`, `AbortSignal` types. TypeScript projects need `@types/node` (or the DOM lib).
 
@@ -127,7 +127,7 @@ interface TokenStorage {
 
 Plug in a file, a database, Redis, anything. The contract: `get` is called **once, when the client is created**; `set` is called after every authorization or refresh. The library keeps the tokens in memory in between.
 
-Allegro refresh tokens are single use, so if several processes share one account, **make `storage` coordinate** (a lock or compare-and-swap in your database, re-reading tokens before refreshing). The library does not de-duplicate refreshes across processes. If you prefer to own refresh completely, set `refreshThresholdHours: 0`.
+Allegro refresh tokens are single use, so if several processes share one account, **make `storage` coordinate** (more scenarios in [docs/wrapping.md](docs/wrapping.md)) (a lock or compare-and-swap in your database, re-reading tokens before refreshing). The library does not de-duplicate refreshes across processes. If you prefer to own refresh completely, set `refreshThresholdHours: 0`.
 
 ## Errors
 

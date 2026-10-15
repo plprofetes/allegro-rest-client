@@ -106,7 +106,7 @@ Likely to be done, so ordered by value:
 
 ## Out of scope
 
-Refresh-token race handling and multi-process coordination: storage implementations own it, and the README will say so. Other Allegro APIs not present in the public spec (types can be supplied through the bring-your-own paths type).
+Refresh-token race handling and multi-process coordination: storage implementations own it. The scenarios that deliberately stay in a consumer's wrapper are listed in [wrapping.md](wrapping.md). Other Allegro APIs not present in the public spec (types can be supplied through the bring-your-own paths type).
 
 ## Notes
 

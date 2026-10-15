@@ -30,6 +30,8 @@ Short, copy-pasteable procedures for the recurring jobs on this repo. Written fo
 | `scripts/spec-update.mjs`     | Downloads the latest spec                                                                                                        |
 | `test/`                       | Offline tests with a mock `fetch` (`helpers.ts`), plus opt-in live tests                                                         |
 
+Application-level concerns (locking across processes, re-authorization, alerting) belong in a consumer's wrapper, not here: see [wrapping.md](wrapping.md).
+
 Design rules to keep: zero runtime dependencies; one transport function (`send`); one error shape per failure kind; behaviour changes go in the README "Upgrading" section.
 
 ## Everyday checks
