@@ -114,20 +114,20 @@ AllegroRestClient(config, options?)
 
 `config`: `app_name`, `type` (`'device' | 'web'`), `client_id`, `client_secret`, `url_redirect` (web apps).
 
-| Option                  | Default           | Meaning                                                                                |
-| ----------------------- | ----------------- | -------------------------------------------------------------------------------------- |
-| `sandbox`               | `false`           | Use the Allegro sandbox hosts                                                          |
-| `account`               | `'default'`       | Key under which tokens are stored (one client per Allegro account)                     |
-| `storage`               | in memory         | Where tokens live, see below                                                           |
-| `logger`                | `false`           | `true` prints requests, retries and refreshes to the console                           |
-| `hooks`                 | none              | Callbacks for logging/metrics, see below                                               |
-| `policy`                | `defaultPolicy`   | Decides what happens after each response, see below                                    |
-| `fetch`                 | global `fetch`    | Your own `fetch` (proxy, keep-alive agent, test double)                                |
-| `refreshThresholdHours` | `1`               | Refresh when fewer hours remain. `0` turns built-in refresh off (you refresh yourself) |
-| `tokenParams`           | `'form'`          | `'query'` sends OAuth parameters in the URL like 1.x did                               |
-| `defaultHeaders`        | none              | Headers sent on every API and token request (per-request `headers` win)                |
-| `userAgent`             | none              | Shorthand for a default `User-Agent` header                                            |
-| `sleep`, `now`          | real timers/clock | Injectable for tests                                                                   |
+| Option                  | Default           | Meaning                                                                                  |
+| ----------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
+| `sandbox`               | `false`           | Use the Allegro sandbox hosts                                                            |
+| `account`               | `'default'`       | Key under which tokens are stored (one client per Allegro account)                       |
+| `storage`               | in memory         | Where tokens live, see below                                                             |
+| `logger`                | `false`           | `true` logs to the console; or pass a pino-style logger (`debug/info/warn(fields, msg)`) |
+| `hooks`                 | none              | Callbacks for logging/metrics, see below                                                 |
+| `policy`                | `defaultPolicy`   | Decides what happens after each response, see below                                      |
+| `fetch`                 | global `fetch`    | Your own `fetch` (proxy, keep-alive agent, test double)                                  |
+| `refreshThresholdHours` | `1`               | Refresh when fewer hours remain. `0` turns built-in refresh off (you refresh yourself)   |
+| `tokenParams`           | `'form'`          | `'query'` sends OAuth parameters in the URL like 1.x did                                 |
+| `defaultHeaders`        | none              | Headers sent on every API and token request (per-request `headers` win)                  |
+| `userAgent`             | none              | Shorthand for a default `User-Agent` header                                              |
+| `sleep`, `now`          | real timers/clock | Injectable for tests                                                                     |
 
 ## Token storage
 
@@ -194,7 +194,7 @@ A policy can also be given per request (`{ policy }` option).
 
 ## Logging and metrics
 
-`logger: true` is a console shortcut. For anything real, use hooks. They receive method, URL, kind, attempt, status, duration and the request id header when Allegro sends one; they never receive credentials, and an exception inside a hook cannot break a request.
+`logger: true` is a console shortcut; `logger: pino()` (any object with `debug/info/warn(fields, message)`) gets the same events as structured records, without credentials. For metrics and tracing, use hooks. They receive method, URL, kind, attempt, status, duration and the request id header when Allegro sends one; they never receive credentials, and an exception inside a hook cannot break a request.
 
 ```ts
 hooks: {

@@ -213,3 +213,24 @@ test('defaultHeaders and userAgent reach API calls; per-request headers win', as
   assert.equal(calls[0].headers.get('authorization'), `Bearer ${stored.access_token}`)
   assert.equal(calls[1].headers.get('x-team'), 'b')
 })
+
+test('a pino-style logger receives structured records (no credentials)', async () => {
+  const records: unknown[][] = []
+  const rec = (level: string) => (fields: object, message: string) => records.push([level, fields, message])
+  const logger = { debug: rec('debug'), info: rec('info'), warn: rec('warn') }
+  const { fetch } = mockFetch(() => json({}))
+  const stored = tokens()
+  const client = await AllegroRestClient(config, { fetch, logger, storage: memoryStorage(stored).storage })
+  await client.get('/x')
+  const request = records.find((r) => (r[2] as string).startsWith('request:'))!
+  assert.equal(request[0], 'debug')
+  assert.deepEqual(request[1], {
+    app_name: 'test-app',
+    account: 'default',
+    method: 'GET',
+    url: 'https://api.allegro.pl/x',
+    kind: 'api',
+    attempt: 1,
+  })
+  assert.ok(!JSON.stringify(records).includes(stored.access_token))
+})

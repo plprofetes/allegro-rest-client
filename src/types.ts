@@ -12,10 +12,17 @@ export interface ClientConfig {
 /** Where token endpoint parameters are sent. `form` (default) keeps secrets out of URLs. */
 export type TokenParamsStyle = 'form' | 'query'
 
+/** Structured logger in pino's call style: `logger.info({ account }, 'message')`. pino, and anything shaped like it, fits. */
+export interface Logger {
+  debug(fields: Record<string, unknown>, message: string): void
+  info(fields: Record<string, unknown>, message: string): void
+  warn(fields: Record<string, unknown>, message: string): void
+}
+
 export interface ClientOptions {
   sandbox?: boolean
-  /** `true` prints request/refresh info to the console. */
-  logger?: boolean
+  /** `true` prints request/refresh info to the console; a {@link Logger} receives it as structured records. Never contains credentials. */
+  logger?: boolean | Logger
   account?: string
   /** Token persistence. `get` is called once, when the client is constructed. */
   storage?: TokenStorage

@@ -25,10 +25,24 @@ function memoryStorage(): TokenStorage {
   }
 }
 
-function consoleHooks(prefix: string): ClientHooks {
+type Level = 'debug' | 'info' | 'warn'
+type Log = (level: Level, message: string, fields?: Record<string, unknown>) => void
+
+function loggerHooks(log: Log): ClientHooks {
   return {
-    onRequest: (e) => console.debug(`${prefix}, request: ${e.method} ${e.url} (attempt ${e.attempt})`),
-    onRetry: (e) => console.warn(`${prefix}, retrying ${e.method} ${e.url} in ${e.delayMs}ms`),
+    onRequest: (e) =>
+      log('debug', `request: ${e.method} ${e.url} (attempt ${e.attempt})`, {
+        method: e.method,
+        url: e.url,
+        kind: e.kind,
+        attempt: e.attempt,
+      }),
+    onRetry: (e) =>
+      log('warn', `retrying ${e.method} ${e.url} in ${e.delayMs}ms`, {
+        method: e.method,
+        url: e.url,
+        delayMs: e.delayMs,
+      }),
   }
 }
 
@@ -50,18 +64,20 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
   }
   const oauthUser = Buffer.from(`${config.client_id}:${config.client_secret}`).toString('base64')
   const account = options.account || 'default'
-  const isLogging = options.logger === true
   const now = options.now ?? Date.now
   const refreshThresholdHours = options.refreshThresholdHours ?? 1
   const policy = options.policy ?? defaultPolicy
   const storage = options.storage ?? memoryStorage()
   const prefix = `app_name: ${config.app_name}, account: ${account}`
-  const log = (message: string) => {
-    if (isLogging) console.info(`${prefix}, ${message}`)
+  const logger = options.logger
+  const emit: Log = (level, message, fields = {}) => {
+    if (typeof logger === 'object') logger[level]({ app_name: config.app_name, account, ...fields }, message)
+    else if (logger === true) console[level](`${prefix}, ${message}`)
   }
+  const log = (message: string) => emit('info', message)
   const deps: TransportDeps = {
     fetch: options.fetch,
-    hooks: mergeHooks(options.hooks ?? {}, isLogging ? consoleHooks(prefix) : {}),
+    hooks: mergeHooks(options.hooks ?? {}, logger ? loggerHooks(emit) : {}),
     sleep: options.sleep ?? sleepDefault,
     now,
   }
@@ -142,7 +158,7 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
   }
 
   const makeRequest = async <T = any>(endpointPath: string, opts: RequestOptions = {}): Promise<T> => {
-    if (isLogging) console.debug(`tokens expire in ${getExpiresInHours(tokens, now()).toFixed(2)} hours`)
+    if (logger) emit('debug', `tokens expire in ${getExpiresInHours(tokens, now()).toFixed(2)} hours`)
     if (tokens && refreshThresholdHours > 0 && getExpiresInHours(tokens, now()) < refreshThresholdHours) {
       if (tokens.grant === 'client_credentials') await authorizeApp()
       else if (tokens.refresh_token) await refresh()
@@ -190,6 +206,7 @@ export type {
   ClientOptions,
   DeviceResponse,
   Error,
+  Logger,
   Errors,
   OAuthError,
   PolicyContext,
