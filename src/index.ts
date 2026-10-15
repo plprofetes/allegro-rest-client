@@ -9,6 +9,7 @@ import type {
   ClientHooks,
   ClientOptions,
   DeviceResponse,
+  PaginateOptions,
   RequestOptions,
   TokenStorage,
 } from './types'
@@ -204,6 +205,34 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
     return (await send(deps, { ...built, kind: 'api', policy: built.policy ?? policy })) as T
   }
 
+  async function* paginate<T = any>(path: string, opts: PaginateOptions = {}): AsyncGenerator<T, void, undefined> {
+    const { itemsKey, maxItems = Infinity, ...rest } = opts
+    const limit = Number(rest.qs?.limit ?? 100)
+    let offset = Number(rest.qs?.offset ?? 0)
+    let yielded = 0
+    while (yielded < maxItems) {
+      const page = await makeRequest<Record<string, unknown>>(path, { ...rest, qs: { ...rest.qs, limit, offset } })
+      const arrays = itemsKey
+        ? [itemsKey]
+        : Object.keys(page ?? {}).filter((key) => Array.isArray((page as Record<string, unknown>)[key]))
+      const items = arrays.length === 1 ? (page as Record<string, unknown>)[arrays[0]] : undefined
+      if (!Array.isArray(items)) {
+        throw {
+          error: 'invalid_response',
+          error_description: itemsKey
+            ? `Response has no array "${itemsKey}".`
+            : 'Cannot tell which response property holds the items; pass "itemsKey".',
+        }
+      }
+      for (const item of items) {
+        if (yielded++ >= maxItems) return
+        yield item as T
+      }
+      if (items.length < limit) return
+      offset += items.length
+    }
+  }
+
   const withMethod =
     (method: string) =>
     <T = any>(path: string, opts?: RequestOptions) =>
@@ -218,6 +247,7 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
     getAccount: (): string => account,
     getSellerId,
     getExpiresInHours: (): string => getExpiresInHours(tokens, now()).toFixed(2),
+    paginate,
     request: makeRequest,
     get: withMethod('GET'),
     post: withMethod('POST'),
@@ -242,6 +272,7 @@ export type {
   Logger,
   Errors,
   OAuthError,
+  PaginateOptions,
   PolicyContext,
   PolicyDecision,
   RequestInfo,

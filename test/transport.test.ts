@@ -234,3 +234,37 @@ test('a pino-style logger receives structured records (no credentials)', async (
   })
   assert.ok(!JSON.stringify(records).includes(stored.access_token))
 })
+
+test('paginate walks offset/limit pages until a short page', async () => {
+  const all = Array.from({ length: 5 }, (_, i) => ({ id: i }))
+  const { fetch, calls } = mockFetch((req) => {
+    const q = new URL(req.url).searchParams
+    const offset = Number(q.get('offset'))
+    const items = all.slice(offset, offset + Number(q.get('limit')))
+    return json({ offers: items, count: items.length, totalCount: 5 })
+  })
+  const client = await AllegroRestClient(config, { fetch, storage: memoryStorage(tokens()).storage })
+  const seen: unknown[] = []
+  for await (const offer of client.paginate('/sale/offers', { qs: { limit: 2, 'publication.status': 'ACTIVE' } })) {
+    seen.push(offer)
+  }
+  assert.deepEqual(seen, all)
+  assert.deepEqual(
+    calls.map((c) => new URL(c.url).searchParams.get('offset')),
+    ['0', '2', '4'],
+  )
+  assert.equal(new URL(calls[0].url).searchParams.get('publication.status'), 'ACTIVE')
+})
+
+test('paginate honours maxItems, itemsKey and refuses to guess among several arrays', async () => {
+  const { fetch, calls } = mockFetch(() => json({ a: [1, 2, 3], b: [4] }))
+  const client = await AllegroRestClient(config, { fetch, storage: memoryStorage(tokens()).storage })
+  const drain = async (gen: AsyncIterable<unknown>) => {
+    const out: unknown[] = []
+    for await (const x of gen) out.push(x)
+    return out
+  }
+  await assert.rejects(drain(client.paginate('/x')), { error: 'invalid_response' })
+  assert.deepEqual(await drain(client.paginate('/x', { itemsKey: 'a', maxItems: 2, qs: { limit: 3 } })), [1, 2])
+  assert.equal(calls.length, 2)
+})

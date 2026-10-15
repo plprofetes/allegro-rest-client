@@ -90,6 +90,13 @@ export interface Errors {
   }[]
 }
 
+export interface PaginateOptions extends Omit<RequestOptions, 'method' | 'body' | 'form' | 'json' | 'raw'> {
+  /** Response property that holds the items. Default: the only array-valued property. */
+  itemsKey?: string
+  /** Stop after this many items. */
+  maxItems?: number
+}
+
 export type RequestHost = 'api' | 'upload'
 
 export interface RequestOptions {
@@ -196,6 +203,12 @@ export interface AllegroClient {
   getSellerId: () => string | null
   /** Hours until the access token expires, as a string with 2 decimals. */
   getExpiresInHours: () => string
+  /**
+   * Yields every item of an `offset`/`limit` endpoint (38 of the paginated GET operations, e.g. `/sale/offers`), one request per page.
+   * `qs.limit` sets the page size (default 100) and `qs.offset` the start. The items are found in the response's only array property, or in `itemsKey`.
+   * Stops at a short page, or after `maxItems`. Cursor endpoints (`page.id`, `from`) are not supported.
+   */
+  paginate: <T = any>(endpoint: string, opts?: PaginateOptions) => AsyncGenerator<T, void, undefined>
   request: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
   get: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
   post: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>

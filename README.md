@@ -106,6 +106,16 @@ Use only one of `body`, `json`, `form`.
 
 Observed on the sandbox (details and the rest in [docs/allegro-conventions.md](docs/allegro-conventions.md)): `Accept` must be Allegro's vendor type, since `application/json` and `*/*` get **406**; writes need the vendor `Content-Type` (`application/json` gets **415**, which is why `json` defaults to the vendor type); unknown query parameters are silently ignored; and every API response carries a `trace-id` header worth quoting to support (`err.headers.get('trace-id')`).
 
+### Paginating
+
+```ts
+for await (const offer of client.paginate('/sale/offers', { qs: { limit: 100, 'publication.status': 'ACTIVE' } })) {
+  // one request per page, stops at the last (short) page
+}
+```
+
+Works for the `offset`/`limit` endpoints (38 of the paginated operations in the spec). The items are taken from the response's only array property; pass `itemsKey` if there are several, and `maxItems` to stop early. Endpoints paged by cursor (`page.id`, `from`) are not covered: loop with `client.get` and follow the cursor yourself.
+
 ## Client options
 
 ```ts

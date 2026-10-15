@@ -87,7 +87,7 @@ Likely to be done, so ordered by value:
 2. **Typed API.** Opt-in paths type: `AllegroRestClient<AllegroPaths>`; untyped by default so nobody loads the 1.4 MB generated file by accident. Templated calls (`get('/sale/offers/{offerId}', { params: { path, query } })`) or `operationId` calls; no loose string overloads that accept typos. Bring-your-own paths type for APIs the public spec does not cover. Generated operation -> `Accept` media type map. Generated types ship as a type-only subpath.
 3. **Errors.** Opt-in `errorMode: 'class'` returning `AllegroApiError` (status, headers, `errors[]`, request id, stack); considered as the default in a later major.
 4. **Auth** (done: `client_credentials` as `authorizeApp()`, `getAuthorizationUrl()`, `pollDevice()` using the client's injectable `sleep`/`now`). Persisting a pending device code across restarts stays in the wrapper (see wrapping.md #6).
-5. **Pagination** async iterators (44 paginated operations).
+5. **Pagination** (done for `offset`/`limit`, 38 operations: `client.paginate`). Cursor endpoints (`page.id`, `from`/`after`; about 8 operations) are left to callers until someone needs them.
 6. **Testing helpers.** Mock `fetch` / recorded-fixture helper for consumers.
 7. **Docs.** Quickstart per auth flow; recipes (upload an image, download a label, paginate offers, handle 429, multiple accounts via a shared-config factory); typedoc reference.
 8. **Release hygiene.** Changesets, changelog, npm provenance, public-API surface snapshot (api-extractor or similar), deprecation runtime warnings, scheduled workflow that opens a PR when the upstream spec changes, TypeScript 7 canary job.
