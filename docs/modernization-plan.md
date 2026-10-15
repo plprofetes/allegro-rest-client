@@ -2,7 +2,7 @@
 
 Goal: turn `allegro-rest-client` into a lean, zero-dependency, typed client that a team would choose over writing its own. Auth lifecycle and transport live in the library; policy decisions (retries, locking across processes, logging, metrics) are injected from outside, with defaults and presets provided.
 
-Status: planned, nothing implemented yet. Baseline `1.1.1`. Analysis date 2026-10-15. Reviewed once for code correctness and once from a consumer-adoption point of view; both reviews are folded in below.
+Status: Phase 1a and 1b implemented on the working branch (see "Implementation status" at the end); Phase 2 and 3 are planned. Baseline `1.1.1`. Analysis date 2026-10-15. Reviewed once for code correctness and once from a consumer-adoption point of view; both reviews are folded in below.
 
 ## Release and compatibility stance
 
@@ -113,3 +113,15 @@ Refresh-token race handling and multi-process coordination: storage implementati
 - Spec facts (file dated 2026-10-15): OpenAPI 3.0.0, 204 paths, 270 operations, 982 schemas, 11 deprecated operations, unique `operationId`s. `openapi-typescript` 7.13 produces a ~1.4 MB `.d.ts` in ~1.3 s and declares a TypeScript `^5` peer.
 - Allegro documents 429 on only a couple of operations, so presets must handle 429 / `Retry-After` generically.
 - Not verified (Allegro hosts were unreachable from the analysis environment): upstream docs and changelog, refresh-token rotation semantics, the Allegro request-id header name, spec redistribution terms.
+
+## Implementation status
+
+Phase 1a and 1b are implemented; maintenance procedures are in [runbooks.md](runbooks.md). Deviations from the plan above, kept deliberately small (solo-maintainer, KISS):
+
+- No `composePolicies` helper: presets compose through their `next` option.
+- The CJS `node16` and TypeScript 5 consumer-fixture CI job was dropped; the test build itself is a `module: node16` CommonJS consumer of the sources. Revisit if consumers report typing problems.
+- CI is a single workflow (lint, tests, build) on Node 22 and 24, not 26.
+- Hooks, `raw`, `host: 'upload'`, `signal`/`timeout`, injectable `fetch` and per-request `policy` landed together with the transport instead of as a separate step; the console `logger` is implemented on the same hooks.
+- The migration guide lives in the README ("Upgrading from 1.x") rather than a separate file.
+- `tokenParams` (`'form'` default, `'query'` as the escape hatch) was added because the form-body token requests are **not yet verified against the live Allegro token endpoint**. This is the release gate described in the runbooks.
+- Open items: Allegro's terms for redistributing the spec (the README states the retrieval date and ownership), the name of Allegro's request-id response header (the hook checks `trace-id`, `x-trace-id`, `x-request-id`), the original sample credentials that remain in git history and must be rotated.
