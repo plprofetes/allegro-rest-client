@@ -116,7 +116,21 @@ for await (const offer of client.paginate('/sale/offers', { qs: { limit: 100, 'p
 }
 ```
 
-Works for the `offset`/`limit` endpoints (38 of the paginated operations in the spec). The items are taken from the response's only array property; pass `itemsKey` if there are several, and `maxItems` to stop early. Endpoints paged by cursor (`page.id`, `from`) are not covered: loop with `client.get` and follow the cursor yourself.
+Works for the `offset`/`limit` endpoints (38 of the paginated operations in the spec). The items are taken from the response's only array property; pass `itemsKey` if there are several, and `maxItems` to stop early. Allegro limits how deep you can page: `/order/checkout-forms` answers `TooLargeMaxResultWindowException` when offset plus limit exceed 10000 (seen on the sandbox, 2026-10-15), and that error reaches you unchanged.
+
+Endpoints with a cursor (`nextPage.id` in the response, `page.id` in the query: `/sale/products`, `/sale/bundles`, `/sale/flexible-bundles`) need `cursor: true`, and `/sale/products` also an `itemsKey` because its response has two arrays and a supported `Accept-Language`:
+
+```ts
+for await (const product of client.paginate('/sale/products', {
+  cursor: true,
+  itemsKey: 'products',
+  qs: { phrase: 'laptop' },
+  headers: { 'Accept-Language': 'pl-PL' },
+})) {
+}
+```
+
+Event feeds that continue from the last event id (`from`) are not covered.
 
 ## Client options
 

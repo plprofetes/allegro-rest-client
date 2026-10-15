@@ -316,3 +316,28 @@ test("errorMode 'class' leaves your own policy errors alone and defaults stay pl
   const err = await plain.get('/x').catch((e) => e)
   assert.ok(!(err instanceof Error))
 })
+
+test('paginate with cursor follows nextPage.id as page.id and stops when there is none', async () => {
+  const pages: Record<string, unknown> = {
+    '': { products: [{ id: 'a' }, { id: 'b' }], filters: [], nextPage: { id: 'c1' } },
+    c1: { products: [{ id: 'c' }], filters: [], nextPage: { id: 'c2' } },
+    c2: { products: [{ id: 'd' }], filters: [] },
+  }
+  const { fetch, calls } = mockFetch((req) => json(pages[new URL(req.url).searchParams.get('page.id') ?? '']))
+  const client = await AllegroRestClient(config, { fetch, storage: memoryStorage(tokens()).storage })
+  const seen: string[] = []
+  for await (const p of client.paginate<{ id: string }>('/sale/products', {
+    cursor: true,
+    itemsKey: 'products',
+    qs: { phrase: 'x' },
+  }))
+    seen.push(p.id)
+  assert.deepEqual(seen, ['a', 'b', 'c', 'd'])
+  assert.equal(calls.length, 3)
+  assert.ok(calls.every((c) => !new URL(c.url).searchParams.has('limit') && !new URL(c.url).searchParams.has('offset')))
+  assert.equal(new URL(calls[0].url).searchParams.get('phrase'), 'x')
+  // without itemsKey, products and filters are both arrays: refuse to guess
+  await assert.rejects(client.paginate('/sale/products', { cursor: true })[Symbol.asyncIterator]().next(), {
+    error: 'invalid_response',
+  })
+})
