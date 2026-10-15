@@ -1,9 +1,11 @@
+import { randomBytes } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import { AllegroRestClient, type AuthResponse } from '../../src'
 import { encrypt, githubVariableStorage } from './storage'
 
 // CLI for .github/workflows/user-token.yml:
 //   bootstrap  device flow with a person approving; stores the first tokens
-//   local      same device flow on your machine; prints the encrypted state to paste as a repository variable
+//   local      same device flow on your machine; prints step-by-step instructions and the encrypted state to paste
 //   refresh    spends the stored refresh token, stores the rotated one, and proves the new token works
 // Never prints tokens. Environment: ALLEGRO_CLIENT_ID/SECRET, GITHUB_REPOSITORY, CI_STATE_PAT, ALLEGRO_STATE_KEY.
 
@@ -78,9 +80,12 @@ async function refresh() {
   summary('refresh', after, before)
 }
 
-/** Runs on your machine: needs only the sandbox keys and ALLEGRO_STATE_KEY, no GitHub token. */
+/** Runs on your machine: needs only the sandbox keys; ALLEGRO_STATE_KEY is generated when you have none yet. */
 async function local() {
   const name = process.env.ALLEGRO_STATE_VARIABLE ?? 'ALLEGRO_USER_TOKENS'
+  const repo = process.env.GITHUB_REPOSITORY ?? 'plprofetes/allegro-rest-client'
+  const generatedKey = process.env.ALLEGRO_STATE_KEY ? undefined : randomBytes(32).toString('base64url')
+  const stateKey = process.env.ALLEGRO_STATE_KEY ?? generatedKey!
   let captured: AuthResponse | undefined
   const client = await AllegroRestClient(
     {
@@ -98,18 +103,40 @@ async function local() {
   )
   const device = await client.bindApp!()
   console.log(
-    `Open and approve the sandbox app (valid ${Math.round(device.expires_in / 60)} minutes):\n${device.verification_uri_complete}\n`,
+    `STEP 1. Open this URL, log in to the SANDBOX and approve the app (valid ${Math.round(device.expires_in / 60)} minutes):\n\n${device.verification_uri_complete}\n\nWaiting for approval...`,
   )
   const tokens = await client.pollDevice(device)
   await client.get('/me')
   summary('local', captured ?? tokens)
-  const blob = encrypt(JSON.stringify(captured ?? tokens), env('ALLEGRO_STATE_KEY'), name)
+  const blob = encrypt(JSON.stringify(captured ?? tokens), stateKey, name)
+  const file = process.env.ALLEGRO_STATE_OUT ?? 'allegro-user-tokens.txt'
+  writeFileSync(file, blob + '\n', { mode: 0o600 })
+
+  const bar = '='.repeat(72)
+  console.log(`\nApproved. Now put the result into GitHub (${repo}).\n`)
+  if (generatedKey) {
+    console.log(
+      `${bar}\nSTEP 2. Create the repository SECRET ALLEGRO_STATE_KEY with this value (you had none; keep a copy somewhere safe):\n${bar}\n${generatedKey}\n${bar}\n`,
+    )
+  } else {
+    console.log(
+      'STEP 2. Make sure the repository SECRET ALLEGRO_STATE_KEY holds the same ALLEGRO_STATE_KEY you just used.\n',
+    )
+  }
   console.log(
-    `\nCreate the repository VARIABLE (Settings > Secrets and variables > Actions > Variables) named ${name} with this value:\n\n${blob}\n`,
+    `${bar}\nSTEP 3. Create the repository VARIABLE (not a secret) ${name} with this value (also saved in ${file}):\n${bar}\n${blob}\n${bar}\n`,
+  )
+  console.log('Web: Settings > Secrets and variables > Actions > Variables tab > New repository variable.')
+  console.log('With the gh CLI instead, from the folder you ran this in:')
+  if (generatedKey) console.log(`  gh secret set ALLEGRO_STATE_KEY --repo ${repo} --body '${generatedKey}'`)
+  console.log(`  gh variable set ${name} --repo ${repo} < ${file}\n`)
+  console.log(
+    'STEP 4. Make sure the secrets ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET and CI_STATE_PAT exist (see docs/runbooks.md), then run the workflow "Sandbox user token" with mode=refresh to check.',
   )
   console.log(
-    'Use the same ALLEGRO_STATE_KEY as the repository secret. Do not run anything else with these tokens until the first scheduled refresh: the refresh token is single use.',
+    '\nDo not use these tokens for anything else: the refresh token is single use, and the first scheduled refresh replaces it.',
   )
+  console.log(`The file ${file} is ciphertext, but delete it once the variable is set.`)
 }
 
 const mode = process.argv[2]

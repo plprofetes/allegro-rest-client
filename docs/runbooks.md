@@ -126,10 +126,10 @@ What is known about Allegro's tokens, and what is not:
 2. Either authorize **on your machine** (no GitHub token needed):
 
    ```sh
-   ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... ALLEGRO_STATE_KEY=... npm run ci:authorize
+   ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... npm run ci:authorize
    ```
 
-   Open the printed URL, approve, then create the repository **variable** (not a secret: the job has to write it) `ALLEGRO_USER_TOKENS` with the printed value. Use the same `ALLEGRO_STATE_KEY` as in the repository secret; the output is ciphertext. Or: run the workflow with `mode = bootstrap`, open the verification URL printed in the log (also shown as a notice on the run) within the hour, and approve the sandbox app. The log shows the access token validity, the number of scopes, and the refresh token expiry. The tokens are stored in the repository variable `ALLEGRO_USER_TOKENS` (AES-256-GCM; the repository is public, so the variable holds ciphertext only).
+   It prints numbered steps and copy-ready values: the approval URL, then (if you did not set `ALLEGRO_STATE_KEY` yourself, it generates one) the secret `ALLEGRO_STATE_KEY`, and the repository **variable** (not a secret: the job has to write it) `ALLEGRO_USER_TOKENS`, plus the equivalent `gh` commands. The value is ciphertext, also saved to `allegro-user-tokens.txt` (git-ignored; delete it afterwards). Or: run the workflow with `mode = bootstrap`, open the verification URL printed in the log (also shown as a notice on the run) within the hour, and approve the sandbox app. The log shows the access token validity, the number of scopes, and the refresh token expiry. The tokens are stored in the repository variable `ALLEGRO_USER_TOKENS` (AES-256-GCM; the repository is public, so the variable holds ciphertext only).
 
 3. From then on the schedule keeps it fresh. Run `mode = refresh` by hand to check.
 
