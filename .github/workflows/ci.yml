@@ -1,4 +1,6 @@
 name: CI
+# No third-party actions on purpose (the repository only allows its own): Node comes from the official
+# container image and the checkout is a plain git fetch with the built-in token.
 on:
   push:
   pull_request:
@@ -8,12 +10,16 @@ jobs:
     strategy:
       matrix:
         node: [22, 24]
+    container: node:${{ matrix.node }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git fetch -q --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
       - run: npm ci
       - run: npm run lint
       - run: npm test # includes the spec drift test (installs the isolated generator)

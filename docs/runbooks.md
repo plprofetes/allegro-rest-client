@@ -43,6 +43,8 @@ npm test          # builds src+test into .build/ and runs node --test (offline, 
 npm run build     # emits dist/
 ```
 
+The workflows in `.github/workflows/` use no third-party actions (the repository only allows its own): they run in the official `node` container and check out with a plain `git fetch`. Keep it that way unless the repository's Actions policy changes.
+
 `npm test` compiles TypeScript first, so type errors fail it. Tests run against compiled output in `.build/`, never against `src` directly.
 
 ## Refresh the Allegro API spec

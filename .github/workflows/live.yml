@@ -7,7 +7,7 @@ on:
   schedule:
     - cron: '17 6 * * 1'
   push:
-    branches: [main, master]
+    branches: [main, master, claude/sharp-babbage-pgo77g] # TEMP: remove the feature branch once merged
 jobs:
   live:
     runs-on: ubuntu-latest
@@ -15,12 +15,16 @@ jobs:
       ALLEGRO_LIVE: '1'
       ALLEGRO_CLIENT_ID: ${{ secrets.ALLEGRO_CLIENT_ID }}
       ALLEGRO_CLIENT_SECRET: ${{ secrets.ALLEGRO_CLIENT_SECRET }}
+    container: node:24
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git fetch -q --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
       - name: Check that the secrets are configured
         run: |
           if [ -z "$ALLEGRO_CLIENT_ID" ] || [ -z "$ALLEGRO_CLIENT_SECRET" ]; then
