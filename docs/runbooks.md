@@ -170,7 +170,7 @@ npm pack --dry-run          # contents must be dist/, README.md, LICENSE, packag
 
 1. Do the live login check from [Run the live sandbox tests](#run-the-live-sandbox-tests).
 2. If the spec changed since the last release, make sure the README states the retrieval date (it is read from `spec/spec.meta.json`; keep both in sync).
-3. Bump `version` in `package.json` (`npm version <x.y.z> --no-git-tag-version`), commit `chore(release): vX.Y.Z`, tag `vX.Y.Z`.
+3. Move the "unreleased" entries of `CHANGELOG.md` under the new version. Bump `version` in `package.json` (`npm version <x.y.z> --no-git-tag-version`), commit `chore(release): vX.Y.Z`, tag `vX.Y.Z`.
 4. `npm publish` (add `--tag next` for pre-releases), push the tag, write release notes (behaviour changes first).
 
 Breaking = anything in the README "Upgrading" list changing again, a raised Node floor, removed exports.

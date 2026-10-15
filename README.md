@@ -272,7 +272,7 @@ Same factory and methods; the error shapes are unchanged. What changed:
 - The default in-memory storage now works as intended; `options` can be omitted.
 - Types: `ClientConfig.type` also accepts a plain `string`; `bindApp`/`authorize` resolve to the data types (`DeviceResponse`, `AuthResponse`); the exported `Error` type is kept as an alias of `OAuthError`.
 
-New: `patch`, `host: 'upload'`, `raw`, `signal`/`timeout`, `fetch`, `policy` and presets, `hooks`, `refreshThresholdHours`, `tokenParams`.
+New: `patch`, `host: 'upload'`, `raw`, `signal`/`timeout`, `fetch`, `policy` and presets, `hooks`, `refreshThresholdHours`, `tokenParams`, `defaultHeaders`/`userAgent`, `logger` objects, `errorMode`, `authorizeApp`, `getAuthorizationUrl`, `pollDevice`, `paginate`, typed calls (`AllegroRestClient<paths>`), `allegro-rest-client/testing`.
 
 ## Development
 

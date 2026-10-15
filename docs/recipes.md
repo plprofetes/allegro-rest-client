@@ -50,7 +50,7 @@ Keep retries in one place: if your own wrapper also retries, attempts multiply (
 One client per Allegro account, same credentials and options, tokens kept apart by `account`. A small factory keeps the options in one place and reuses clients:
 
 ```ts
-import { AllegroRestClient, type AllegroClient, type ClientOptions } from 'allegro-rest-client'
+import { AllegroRestClient, type AllegroClient, type ClientConfig, type ClientOptions } from 'allegro-rest-client'
 
 export function accountClients(config: ClientConfig, shared: ClientOptions) {
   const clients = new Map<string, Promise<AllegroClient>>()
