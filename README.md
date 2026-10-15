@@ -251,7 +251,7 @@ const { offers } = await client.get('/sale/offers', { params: { query: { limit: 
 
 With `paths`, only paths of the specification are accepted for the method (a typo or `post('/me')` is a compile error), path parameters are required, and `json` is typed from the request body. `params` is `{ path, query, header }`; path values are URL-encoded. Responses are typed as the 2xx bodies (the type also covers every media type of the operation). Endpoints the specification lacks: pass your own `paths`-shaped interface, or use `client.request()`, which is always untyped. Without the type argument nothing changes (`params` still works, untyped).
 
-The types are as accurate as the specification, which Allegro does not always keep in step with the API; treat them as help, not proof. Examples: undocumented fields appear as absent, and the binary endpoints still need `raw: true` and an explicit `Accept`.
+The types are only as accurate as the specification (this library cannot check them against live responses), so treat them as help, not proof. Binary endpoints still need `raw: true` and an explicit `Accept`.
 
 - **Documentation retrieved: 2026-10-15** from <https://developer.allegro.pl/swagger.yaml> (recorded in [`spec/spec.meta.json`](spec/spec.meta.json) together with a checksum).
 - The specification is owned by Allegro; the copy is kept so types can be regenerated reproducibly. A test fails if the committed types and the specification disagree, and if the specification file is missing.
