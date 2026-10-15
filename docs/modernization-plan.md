@@ -83,7 +83,7 @@ Added on top of 1a; each item is small because 1a laid the transport, error, hoo
 
 Likely to be done, so ordered by value:
 
-1. **Quick wins** (`defaultHeaders` / `userAgent` done): pino-style `Logger` object in addition to hooks; storage adapter recipes (file, SQL, Redis) including a locking example.
+1. **Quick wins** (done: `defaultHeaders` / `userAgent`, pino-style `Logger` object in addition to hooks, storage recipes with a locking example in [storage-recipes.md](storage-recipes.md)).
 2. **Typed API.** Opt-in paths type: `AllegroRestClient<AllegroPaths>`; untyped by default so nobody loads the 1.4 MB generated file by accident. Templated calls (`get('/sale/offers/{offerId}', { params: { path, query } })`) or `operationId` calls; no loose string overloads that accept typos. Bring-your-own paths type for APIs the public spec does not cover. Generated operation -> `Accept` media type map. Generated types ship as a type-only subpath.
 3. **Errors.** Opt-in `errorMode: 'class'` returning `AllegroApiError` (status, headers, `errors[]`, request id, stack); considered as the default in a later major.
 4. **Auth.** (`client_credentials` done as `authorizeApp()`) authorization-URL builder for the web flow; device-flow poller (`authorization_pending` / `slow_down`) with injectable persistence and sleep.
