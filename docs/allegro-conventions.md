@@ -23,6 +23,15 @@ Observed by probing the Allegro **sandbox** on **2026-10-15** (`scripts/spike-co
 | 15  | **Device flow:** the code request needs no user; `expires_in` 3600 s, `interval` 5 s; `verification_uri_complete` is the verification page with `?code=<user_code>`; polling early gives `authorization_pending` ("User has not authorized the device code yet.")                                 | Matches what the README and the live tests assume                                                                                                                                                                 |
 | 16  | **Responses are gzip-compressed and chunked**; `content-type` carries `; charset=UTF-8` (the casing of `charset` differs between endpoints)                                                                                                                                                       | `fetch` decompresses transparently. Do not compare content types with `===`; test with `includes`/regex                                                                                                           |
 
+## Observed with a user token (sandbox, 2026-10-15)
+
+From the `user-token.yml` runs (account without offers or orders):
+
+- **Accept-Language:** `GET /sale/products` answers 422 `UnsupportedLanguageInAcceptLanguageHeader` without a supported `Accept-Language` (`pl-PL` works).
+- **Result window:** `GET /order/checkout-forms` with offset plus limit above 10000 answers `TooLargeMaxResultWindowException`; `GET /sale/offers?offset=100000` answered normally with an empty list. The limit is per endpoint.
+- **Cursor shape:** `/sale/products` answers `{ products[], filters[], categories, nextPage }`, with `nextPage.id` used as `page.id`.
+- Reference data is fully available (584 delivery methods), and `/me` returns `id`, `login`, `baseMarketplace`, `email`, names and optional `company`.
+
 ## Not covered (needs a user token or a different environment)
 
 - Write endpoints and any user-scoped read (`/me` etc.): an application token cannot exercise them, so request/response behaviour of `POST /sale/...` beyond content negotiation is unobserved.

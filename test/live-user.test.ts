@@ -65,11 +65,30 @@ for (const [path, key] of [
     const seen: unknown[] = []
     for await (const item of c.paginate(path, { qs: { limit: 2 }, maxItems: 50 })) seen.push(item)
     assert.equal(seen.length, total)
-    // asking beyond the end is not an error
-    const beyond = await c.get<Record<string, unknown>>(path, { qs: { limit: 2, offset: 100000 } })
+    // asking beyond the end is not an error. Stay below Allegro's window: /order/checkout-forms refuses offset+limit
+    // above 10000 (TooLargeMaxResultWindowException), /sale/offers did not on 2026-10-15
+    const beyond = await c.get<Record<string, unknown>>(path, { qs: { limit: 2, offset: total + 10 } })
     assert.deepEqual(beyond[key], [])
   })
 }
+
+test('live user: paginate follows the cursor of /sale/products', { skip: !live }, async () => {
+  const c = await client()
+  const ids = new Set<string>()
+  let n = 0
+  for await (const product of c.paginate<{ id: string }>('/sale/products', {
+    cursor: true,
+    itemsKey: 'products',
+    qs: { phrase: 'laptop' },
+    headers: { 'Accept-Language': 'pl-PL' },
+    maxItems: 45,
+  })) {
+    ids.add(product.id)
+    n++
+  }
+  assert.equal(n, 45, 'a second page was fetched (the first has 30)')
+  assert.equal(ids.size, 45, 'no product is repeated across pages')
+})
 
 const anAuthError = (e: unknown) => ['invalid_token', 'invalid_grant'].includes((e as { error?: string }).error ?? '')
 
