@@ -1,0 +1,26 @@
+name: Spike conventions
+# Probes the Allegro sandbox for undocumented conventions and prints a redacted report to the job log.
+# Runs on demand and whenever the spike itself changes; never on a schedule.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/spike-conventions.mjs
+      - .github/workflows/spike.yml
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    container: node:22
+    env:
+      ALLEGRO_CLIENT_ID: ${{ secrets.ALLEGRO_CLIENT_ID }}
+      ALLEGRO_CLIENT_SECRET: ${{ secrets.ALLEGRO_CLIENT_SECRET }}
+    steps:
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git fetch -q --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+      - run: node scripts/spike-conventions.mjs

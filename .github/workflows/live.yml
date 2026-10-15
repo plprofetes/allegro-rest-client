@@ -1,0 +1,36 @@
+name: Live sandbox
+# Talks to the Allegro sandbox with a registered *device* application (no user login needed). Needs two
+# repository secrets (Settings > Secrets and variables > Actions): ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET.
+# Secrets are not available to pull requests from forks, so this runs on demand, weekly, and on pushes to main.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+  push:
+    branches: [main, master, claude/sharp-babbage-pgo77g] # TEMP: remove the feature branch once merged
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    env:
+      ALLEGRO_LIVE: '1'
+      ALLEGRO_CLIENT_ID: ${{ secrets.ALLEGRO_CLIENT_ID }}
+      ALLEGRO_CLIENT_SECRET: ${{ secrets.ALLEGRO_CLIENT_SECRET }}
+    container: node:22
+    steps:
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git fetch -q --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+      - name: Check that the secrets are configured
+        run: |
+          if [ -z "$ALLEGRO_CLIENT_ID" ] || [ -z "$ALLEGRO_CLIENT_SECRET" ]; then
+            echo "::error::Add the repository secrets ALLEGRO_CLIENT_ID and ALLEGRO_CLIENT_SECRET (sandbox device app)."
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run build:test
+      - run: node --test .build/test/live.test.js

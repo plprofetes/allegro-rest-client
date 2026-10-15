@@ -1,0 +1,23 @@
+name: CI
+# No third-party actions on purpose (the repository only allows its own): Node comes from the official
+# container image and the checkout is a plain git fetch with the built-in token.
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: node:22 # the supported baseline (package.json engines)
+    steps:
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git fetch -q --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test # includes the spec drift test (installs the isolated generator)
+      - run: npm run build
