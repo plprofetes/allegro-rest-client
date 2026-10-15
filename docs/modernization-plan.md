@@ -29,7 +29,7 @@ Confirmed by code reading and the published package; none reproduced against the
 - `PATCH` already works through `request(endpoint, { method: 'PATCH' })`.
 - Three operations are served from a different host (`upload.{environment}`) and cannot be called at all today because the API host is hardcoded: `/sale/images`, `/sale/offer-attachments/{id}`, `/after-sales-service-conditions/attachments/{id}`. 23 request bodies are binary and one is multipart.
 - Tests: 2, both live-sandbox; one passes vacuously (`try/catch` with no assertions).
-- Sample client credentials are committed in `README.md` and `tests/` and therefore in git history.
+- Sample client credentials of the upstream project are committed in `README.md` and `tests/` and therefore in git history (removed from the tree in 2.0).
 
 ## Design principles (groundwork for Phase 2)
 
@@ -64,7 +64,7 @@ Phase 1 is deliberately small, but each piece is shaped so Phase 2 only adds cod
   - Not wired into the client yet; types are not part of the default import path (published later as a type-only subpath).
 - [ ] **Tests.** Offline suite with an injected `fetch`: auth flows, refresh, error shaping, policy and presets, option semantics, storage contract. A contract test freezes the compatibility list above. **Drift test**: spec present, sha256 in the generated header matches the spec, in-memory regeneration equals the committed file (also proves determinism). Type-level assertions compiled with `tsc`. A CJS `node16` consumer fixture and a TypeScript 5 consumer fixture in CI. Live sandbox tests are opt-in (`ALLEGRO_LIVE=1`). The existing tests get real assertions.
 - [ ] **CI.** Lint, build, test on Node 22/24/26.
-- [ ] **Housekeeping.** Move sample credentials out of README and tests (environment variables); **rotate the committed pairs**, as they remain in history. Remove the temporary-storage test helper. Check Allegro's terms for redistributing the spec before keeping it committed (open item).
+- [ ] **Housekeeping.** Move sample credentials out of README and tests (environment variables); the committed pairs belong to the upstream project's sandbox applications (not to this repository's owner), so rotating them is not this project's job, but they must not be used as this project's CI credentials. Remove the temporary-storage test helper. Check Allegro's terms for redistributing the spec before keeping it committed (open item).
 
 ## Phase 1b: adoption blockers
 
@@ -129,4 +129,4 @@ Phase 1a and 1b are implemented; maintenance procedures are in [runbooks.md](run
 - The migration guide lives in the README ("Upgrading from 1.x") rather than a separate file.
 - `tokenParams` (`'form'` default, `'query'` as the escape hatch) was added because the form-body token requests needed verifying against the live Allegro token endpoint (done 2026-10-15: the live job passed against the sandbox for both styles). The live sandbox tests (`.github/workflows/live.yml`, repository secrets) check that Allegro accepts both styles; one real login remains the release gate described in the runbooks.
 - Live tests cover the device flow only; testing the web OAuth flow is a possible later addition (see the runbooks).
-- Open items: Allegro's terms for redistributing the spec (the README states the retrieval date and ownership), the original sample credentials that remain in git history and must be rotated.
+- Open items: Allegro's terms for redistributing the spec (the README states the retrieval date and ownership), CI should use the maintainer's own sandbox application (repository secrets), not the sample credentials that remain in upstream history.
