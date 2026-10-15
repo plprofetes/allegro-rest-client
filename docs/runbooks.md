@@ -98,7 +98,7 @@ ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... \
 npm test
 ```
 
-They need no logged-in user. `bindApp()` is answered anonymously, and exchanging the fresh `device_code` before anybody approved it must be answered with `authorization_pending`. Together that proves Allegro understands our token requests (Basic auth, grant type, parameters). They run for both `tokenParams: 'form'` and `'query'`, and also check a bogus refresh token, the missing-token path and a fake access token.
+They need no logged-in user (see [allegro-conventions.md](allegro-conventions.md#can-user-flows-be-tested-unattended-in-ci) for why user flows are not automated). `bindApp()` is answered anonymously, and exchanging the fresh `device_code` before anybody approved it must be answered with `authorization_pending`. Together that proves Allegro understands our token requests (Basic auth, grant type, parameters). They run for both `tokenParams: 'form'` and `'query'`, and also check a bogus refresh token, the missing-token path and a fake access token.
 
 **Not covered: the web (authorization code) OAuth flow.** There is no web application registered, so `authorize(code)` with a real code and a registered `redirect_uri` is only tested offline. If that flow ever matters: register a sandbox _web_ app, add a secret for its registered redirect URI, and add live tests that call `authorize('invalid_code')` with `type: 'web'` and `url_redirect` set. Expect `invalid_grant` mentioning the code, which proves the form body and `redirect_uri` are understood. A real code exchange needs a person to log in, so it would stay a manual release check.
 

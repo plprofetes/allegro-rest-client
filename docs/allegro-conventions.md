@@ -31,6 +31,27 @@ Observed by probing the Allegro **sandbox** on **2026-10-15** (`scripts/spike-co
 - The **production** environment was not probed; sandbox and production may differ.
 - Uploads (`upload.` host): only the 404 on `/` and the 406 on a request without `Accept` were observed.
 
+## What an application token can reach
+
+By the specification, only **12 of 270 operations** accept an application token (`client_credentials`), and all are reference data: `GET /sale/categories` (and `/{categoryId}`, `/parameters`, `/product-parameters`), `/sale/category-events`, `/sale/category-parameters-scheduled-changes`, `/sale/delivery-methods`, `/sale/offer-promotion-packages`, `/order/carriers` (and `/ALLEGRO/points`, `/{carrierId}/tracking`), `/billing/billing-types`. 252 operations need a user token, 6 need none. Offers, products and `/me` are in the user-token group, so an unattended CI job without a user can only exercise the reference-data endpoints. The spike observed `/me` returning 500 with an application token; the project owner reports `/me` working on production (with a user token).
+
+## Sandbox: what is known about testing it
+
+Sources: search results and one Allegro GitHub thread read on 2026-10-15. **`developer.allegro.pl` was not reachable from the analysis environment, so the official sandbox pages were not read.** Anything below that is only a search-result summary is marked as such.
+
+- **What it is.** A test copy of the platform on `allegro.pl.allegrosandbox.pl` with its own application registrations (`apps.developer.allegro.pl.allegrosandbox.pl`) and API host `api.allegro.pl.allegrosandbox.pl`. Accounts are created by the developer; Allegro does not create them. Payments use a simulator. Categories and parameters are synchronised from production roughly quarterly, so they can lag (an Allegro expert in the [community forum](https://spolecznosc.allegro.pl/t5/spotkania-z-ekspertami-allegro/13-09-pytasz-i-wiesz-allegro-api/m-p/423743)).
+- **Device flow.** Same paths as production on the sandbox host (`/auth/oauth/device`, `/auth/oauth/token`). The 2019 [allegro-api issue #1240](https://github.com/allegro/allegro-api/issues/1240) ("Sandbox AppDevice auth") shows 401s from an _unactivated_ sandbox account; staff asked the reporter to activate the account ("Aktywacja konta" in the account settings) and the thread ended without a confirmed fix. On 2026-10-15 the requests in this repository's live tests worked with a registered device application (see findings 8, 9 and 15 above).
+- **Login.** A search-result summary of the official docs says two-step login is not required in the test environment. A third-party design note claims a fixed code `123456` when two-step login is enabled; no Allegro source was found, so **do not rely on it**.
+- **Offers via the API.** A [community post](https://spolecznosc.allegro.pl/t5/pocz%C4%85tkuj%C4%85cy-sprzedawcy/sandbox-kod-b%C5%82%C4%99du-offeraccessdeniedexception/td-p/551760) reports `OfferAccessDeniedException` until the sandbox account was verified as a business (seller) account. Unconfirmed for other accounts.
+
+### Can user flows be tested unattended in CI?
+
+**No supported way was found.** The device flow exists so that a person approves the application. No official test mode or fixed approval code was found. Consequences and decisions:
+
+- CI covers everything that works without a user: device code request, `authorization_pending`, token error paths, application tokens and reference-data endpoints (`test/live.test.ts`, the spike).
+- Approving a device and everything after it (a user token, `/me`, offers, products) is a **manual or attended** check. An _attended_ run is feasible: a manually started job prints the verification URL, a person approves it while the job polls (the device code lives 3600 s), and the job probes read-only endpoints with the token held in memory only. Nothing is stored.
+- **Not done on purpose:** keeping a refresh token in a CI secret (refresh tokens are single use, so every run would have to write the next one back, which needs a token with permission to write secrets, and one failed run breaks the chain); scripting the browser login (needs a sandbox user's credentials as a secret, is fragile, and whether the login page has bot protection is unknown). Revisit only if attended runs become a real burden, and then try a throwaway sandbox user.
+
 ## Re-running the spike
 
 ```sh
