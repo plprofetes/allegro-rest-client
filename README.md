@@ -36,16 +36,20 @@ const client = await AllegroRestClient(
 
 if (client.getExpiresInHours() === '0.00') {
   // not authorized yet
-  const { verification_uri_complete, device_code } = await client.bindApp!()
-  console.log('Approve the app at', verification_uri_complete)
-  // poll until the user approved; it rejects with { error: 'authorization_pending' } until then
-  await client.authorize(device_code)
+  const device = await client.bindApp!()
+  console.log('Approve the app at', device.verification_uri_complete)
+  // waits until the user approves (honours interval and slow_down); pass { signal } to cancel
+  await client.pollDevice(device)
 }
 
 const { categories } = await client.get('/sale/categories')
 ```
 
-For a **web** app, send the user to `https://allegro.pl/auth/oauth/authorize?response_type=code&client_id=...&redirect_uri=...` (sandbox: `allegro.pl.allegrosandbox.pl`), then call `client.authorize(code)` with the `code` Allegro appends to your redirect URL. `bindApp` is `undefined` for web apps.
+For a **web** app, send the user to `client.getAuthorizationUrl({ state })` (needs `url_redirect`; verify `state` when they return), then call `client.authorize(code)` with the `code` Allegro appends to your redirect URL. `bindApp` is `undefined` for web apps. Without `pollDevice` you can loop on `client.authorize(device_code)` yourself; it rejects with `{ error: 'authorization_pending' }` until approved.
+
+For **reference data without a user** (categories, delivery methods, carriers; about 12 operations), call `await client.authorizeApp()` (`client_credentials`). The application token lasts about 12 hours and is requested again automatically when it runs low. It replaces whatever tokens the `account` holds, so give it its own `account` if the same storage also holds a user's tokens.
+
+More: [recipes](docs/recipes.md) (quickstart per auth flow, 429, several accounts) and [storage recipes](docs/storage-recipes.md).
 
 ## Making requests
 
@@ -104,6 +108,16 @@ Use only one of `body`, `json`, `form`.
 
 Observed on the sandbox (details and the rest in [docs/allegro-conventions.md](docs/allegro-conventions.md)): `Accept` must be Allegro's vendor type, since `application/json` and `*/*` get **406**; writes need the vendor `Content-Type` (`application/json` gets **415**, which is why `json` defaults to the vendor type); unknown query parameters are silently ignored; and every API response carries a `trace-id` header worth quoting to support (`err.headers.get('trace-id')`).
 
+### Paginating
+
+```ts
+for await (const offer of client.paginate('/sale/offers', { qs: { limit: 100, 'publication.status': 'ACTIVE' } })) {
+  // one request per page, stops at the last (short) page
+}
+```
+
+Works for the `offset`/`limit` endpoints (38 of the paginated operations in the spec). The items are taken from the response's only array property; pass `itemsKey` if there are several, and `maxItems` to stop early. Endpoints paged by cursor (`page.id`, `from`) are not covered: loop with `client.get` and follow the cursor yourself.
+
 ## Client options
 
 ```ts
@@ -112,18 +126,21 @@ AllegroRestClient(config, options?)
 
 `config`: `app_name`, `type` (`'device' | 'web'`), `client_id`, `client_secret`, `url_redirect` (web apps).
 
-| Option                  | Default           | Meaning                                                                                |
-| ----------------------- | ----------------- | -------------------------------------------------------------------------------------- |
-| `sandbox`               | `false`           | Use the Allegro sandbox hosts                                                          |
-| `account`               | `'default'`       | Key under which tokens are stored (one client per Allegro account)                     |
-| `storage`               | in memory         | Where tokens live, see below                                                           |
-| `logger`                | `false`           | `true` prints requests, retries and refreshes to the console                           |
-| `hooks`                 | none              | Callbacks for logging/metrics, see below                                               |
-| `policy`                | `defaultPolicy`   | Decides what happens after each response, see below                                    |
-| `fetch`                 | global `fetch`    | Your own `fetch` (proxy, keep-alive agent, test double)                                |
-| `refreshThresholdHours` | `1`               | Refresh when fewer hours remain. `0` turns built-in refresh off (you refresh yourself) |
-| `tokenParams`           | `'form'`          | `'query'` sends OAuth parameters in the URL like 1.x did                               |
-| `sleep`, `now`          | real timers/clock | Injectable for tests                                                                   |
+| Option                  | Default           | Meaning                                                                                  |
+| ----------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
+| `sandbox`               | `false`           | Use the Allegro sandbox hosts                                                            |
+| `account`               | `'default'`       | Key under which tokens are stored (one client per Allegro account)                       |
+| `storage`               | in memory         | Where tokens live, see below                                                             |
+| `logger`                | `false`           | `true` logs to the console; or pass a pino-style logger (`debug/info/warn(fields, msg)`) |
+| `hooks`                 | none              | Callbacks for logging/metrics, see below                                                 |
+| `policy`                | `defaultPolicy`   | Decides what happens after each response, see below                                      |
+| `fetch`                 | global `fetch`    | Your own `fetch` (proxy, keep-alive agent, test double)                                  |
+| `refreshThresholdHours` | `1`               | Refresh when fewer hours remain. `0` turns built-in refresh off (you refresh yourself)   |
+| `errorMode`             | `'plain'`         | `'class'` rejects with `AllegroApiError` instead of plain objects, see "Errors"          |
+| `tokenParams`           | `'form'`          | `'query'` sends OAuth parameters in the URL like 1.x did                                 |
+| `defaultHeaders`        | none              | Headers sent on every API and token request (per-request `headers` win)                  |
+| `userAgent`             | none              | Shorthand for a default `User-Agent` header                                              |
+| `sleep`, `now`          | real timers/clock | Injectable for tests                                                                     |
 
 ## Token storage
 
@@ -134,7 +151,7 @@ interface TokenStorage {
 }
 ```
 
-Plug in a file, a database, Redis, anything. The contract: `get` is called **once, when the client is created**; `set` is called after every authorization or refresh. The library keeps the tokens in memory in between.
+Plug in a file, a database, Redis, anything ([recipes with a locking example](docs/storage-recipes.md)). The contract: `get` is called **once, when the client is created**; `set` is called after every authorization or refresh. The library keeps the tokens in memory in between.
 
 Allegro refresh tokens are single use, so if several processes share one account, **make `storage` coordinate** (more scenarios in [docs/wrapping.md](docs/wrapping.md)) (a lock or compare-and-swap in your database, re-reading tokens before refreshing). The library does not de-duplicate refreshes across processes. If you prefer to own refresh completely, set `refreshThresholdHours: 0`.
 
@@ -153,6 +170,8 @@ Every failure is a rejected promise with a plain object (not an `Error` instance
 HTTP details are on non-enumerable properties of the error, so `Object.keys(err)` and `JSON.stringify(err)` stay clean: `err.status`, `err.headers` (a `Headers`), `err.body` (text). Note they disappear if you spread or structured-clone the error.
 
 Helpers: `isAllegroError(err)`, `isTransportError(err)`.
+
+**`errorMode: 'class'`** (opt-in) makes the same failures reject with an `AllegroApiError`, a real `Error` with a stack and the same fields (`error`, `error_description`, `errors`) plus `status`, `headers`, `body` and `requestId` (Allegro's `trace-id`, worth quoting to support). `message` is readable (`ERROR: Product not found`). Errors your own policy throws are passed through untouched, and `isAllegroError` accepts both forms.
 
 A table of codes and what to check is in the [runbooks](docs/runbooks.md#debug-a-failing-request-or-login).
 
@@ -190,7 +209,7 @@ A policy can also be given per request (`{ policy }` option).
 
 ## Logging and metrics
 
-`logger: true` is a console shortcut. For anything real, use hooks. They receive method, URL, kind, attempt, status, duration and the request id header when Allegro sends one; they never receive credentials, and an exception inside a hook cannot break a request.
+`logger: true` is a console shortcut; `logger: pino()` (any object with `debug/info/warn(fields, message)`) gets the same events as structured records, without credentials. For metrics and tracing, use hooks. They receive method, URL, kind, attempt, status, duration and the request id header when Allegro sends one; they never receive credentials, and an exception inside a hook cannot break a request.
 
 ```ts
 hooks: {
@@ -201,9 +220,40 @@ hooks: {
 }
 ```
 
+## Testing your code
+
+`allegro-rest-client/testing` gives you a fake Allegro without network access or credentials:
+
+```ts
+import { mockAllegro } from 'allegro-rest-client/testing'
+
+const mock = mockAllegro({
+  'GET /sale/offers': { body: { offers: [{ id: '1' }], count: 1 } },
+  'POST /sale/product-offers': (req) => ({ status: 201, body: { received: req.body } }),
+})
+const client = await mock.client() // already authorized; pass client options as the first argument
+// ... run your code with `client`, then:
+mock.calls // every request: method, path, query, headers, body
+```
+
+Routes are `'METHOD /path'` (no host, no query); a reply is `{ status?, body?, headers? }` or a function returning one. Any other request answers 404 with `MOCK_ROUTE_MISSING`, so a missing route fails loudly. Use `mock.fetch` if you build the client yourself.
+
 ## Types from the official API specification
 
-The repository carries a copy of Allegro's OpenAPI specification and types generated from it (`src/generated/api.d.ts`, not published yet; typed client calls are on the roadmap).
+The package ships types generated from Allegro's OpenAPI specification as a type-only entry point. They are opt-in, so the 1.4 MB file is only loaded by projects that import it:
+
+```ts
+import { AllegroRestClient } from 'allegro-rest-client'
+import type { paths } from 'allegro-rest-client/api-types'
+
+const client = await AllegroRestClient<paths>(config)
+const offer = await client.get('/sale/product-offers/{offerId}', { params: { path: { offerId } } }) // typed response
+const { offers } = await client.get('/sale/offers', { params: { query: { limit: 10 } } }) // typed query
+```
+
+With `paths`, only paths of the specification are accepted for the method (a typo or `post('/me')` is a compile error), path parameters are required, and `json` is typed from the request body. `params` is `{ path, query, header }`; path values are URL-encoded. Responses are typed as the 2xx bodies (the type also covers every media type of the operation). Endpoints the specification lacks: pass your own `paths`-shaped interface, or use `client.request()`, which is always untyped. Without the type argument nothing changes (`params` still works, untyped).
+
+The types are only as accurate as the specification (this library cannot check them against live responses), so treat them as help, not proof. Binary endpoints still need `raw: true` and an explicit `Accept`.
 
 - **Documentation retrieved: 2026-10-15** from <https://developer.allegro.pl/swagger.yaml> (recorded in [`spec/spec.meta.json`](spec/spec.meta.json) together with a checksum).
 - The specification is owned by Allegro; the copy is kept so types can be regenerated reproducibly. A test fails if the committed types and the specification disagree, and if the specification file is missing.
@@ -222,7 +272,7 @@ Same factory and methods; the error shapes are unchanged. What changed:
 - The default in-memory storage now works as intended; `options` can be omitted.
 - Types: `ClientConfig.type` also accepts a plain `string`; `bindApp`/`authorize` resolve to the data types (`DeviceResponse`, `AuthResponse`); the exported `Error` type is kept as an alias of `OAuthError`.
 
-New: `patch`, `host: 'upload'`, `raw`, `signal`/`timeout`, `fetch`, `policy` and presets, `hooks`, `refreshThresholdHours`, `tokenParams`.
+New: `patch`, `host: 'upload'`, `raw`, `signal`/`timeout`, `fetch`, `policy` and presets, `hooks`, `refreshThresholdHours`, `tokenParams`, `defaultHeaders`/`userAgent`, `logger` objects, `errorMode`, `authorizeApp`, `getAuthorizationUrl`, `pollDevice`, `paginate`, typed calls (`AllegroRestClient<paths>`), `allegro-rest-client/testing`.
 
 ## Development
 

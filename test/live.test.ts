@@ -91,3 +91,12 @@ test('live: the API refuses a fake access token with a 401 and an Allegro error 
     return true
   })
 })
+
+test('live: authorizeApp gets an application token that reads reference data', { skip: !live }, async () => {
+  const client = await AllegroRestClient(config, { sandbox: true, account: 'app' })
+  const tokens = await client.authorizeApp()
+  assert.equal(tokens.grant, 'client_credentials')
+  assert.ok(!tokens.refresh_token)
+  const { categories } = await client.get<{ categories: unknown[] }>('/sale/categories')
+  assert.ok(categories.length > 0)
+})

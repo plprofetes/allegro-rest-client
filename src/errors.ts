@@ -32,6 +32,48 @@ export function invalidResponse(reason: string): OAuthError {
   return { error: 'invalid_response', error_description: reason }
 }
 
+/**
+ * Opt-in (`errorMode: 'class'`) replacement for the plain rejection objects: a real `Error` with a stack, carrying the
+ * same fields (`error`/`error_description` or `errors`) plus the HTTP details.
+ */
+export class AllegroApiError extends Error {
+  /** OAuth / library error code (`invalid_grant`, `request_err`, `http_error`, ...). Absent on Allegro API errors. */
+  readonly error?: string
+  readonly error_description?: unknown
+  /** Allegro API error list. Absent on OAuth and library errors. */
+  readonly errors?: Errors['errors']
+  readonly status?: number
+  readonly headers?: Headers
+  readonly body?: string
+  /** Allegro's `trace-id` response header: quote it when contacting support. */
+  readonly requestId?: string
+
+  constructor(source: OAuthError | Errors) {
+    const s = source as Partial<OAuthError & Errors> & ErrorMeta
+    const first = s.errors?.[0]
+    super(
+      first
+        ? `${first.code ?? 'ERROR'}: ${first.userMessage ?? first.message ?? ''}`.trim()
+        : `${s.error}${s.error_description ? `: ${String(s.error_description)}` : ''}`,
+      s.error_description instanceof Error ? { cause: s.error_description } : undefined,
+    )
+    this.name = 'AllegroApiError'
+    this.error = s.error
+    this.error_description = s.error_description
+    this.errors = s.errors
+    this.status = s.status
+    this.headers = s.headers
+    this.body = s.body
+    this.requestId = s.headers?.get('trace-id') ?? undefined
+  }
+}
+
+/** Plain Allegro rejections become `AllegroApiError`; anything else (a custom policy's own error, a real Error) is left alone. */
+export function toClassError(err: unknown): unknown {
+  if (err instanceof Error || !isAllegroError(err)) return err
+  return new AllegroApiError(err)
+}
+
 export function isAllegroError(value: unknown): value is OAuthError | Errors {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>

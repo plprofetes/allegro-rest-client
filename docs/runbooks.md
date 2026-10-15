@@ -16,19 +16,21 @@ Short, copy-pasteable procedures for the recurring jobs on this repo. Written fo
 
 ## Project map
 
-| Path                          | What it is                                                                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                | The `AllegroRestClient` factory: token lifecycle (store, refresh) and the `get/post/...` methods; exports                        |
-| `src/types.ts`                | Every public type, with the option documentation as doc comments                                                                 |
-| `src/http.ts`                 | Request building (`buildRequest`) and the single `send` loop (fetch, hooks, policy, retry)                                       |
-| `src/policy.ts`               | `defaultPolicy` and the opt-in presets `retry429Policy`, `transientRetryPolicy`                                                  |
-| `src/auth.ts`                 | Builds the OAuth token / device requests                                                                                         |
-| `src/errors.ts`, `helpers.ts` | Error shapes and guards; JWT decode and `getExpiresInHours`                                                                      |
-| `src/generated/api.d.ts`      | **Generated** from the spec. Never edit by hand                                                                                  |
-| `spec/`                       | Committed copy of Allegro's OpenAPI spec (`swagger.yaml`) plus `spec.meta.json` (source, retrieval date, sha256)                 |
-| `tools/generator/`            | Isolated install (openapi-typescript + TypeScript 5) and `generate.mjs`; kept apart because the library builds with TypeScript 6 |
-| `scripts/spec-update.mjs`     | Downloads the latest spec                                                                                                        |
-| `test/`                       | Offline tests with a mock `fetch` (`helpers.ts`), plus opt-in live tests                                                         |
+| Path                          | What it is                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/index.ts`                | The `AllegroRestClient` factory: token lifecycle (store, refresh) and the `get/post/...` methods; exports                            |
+| `src/types.ts`                | Every public type, with the option documentation as doc comments                                                                     |
+| `src/http.ts`                 | Request building (`buildRequest`) and the single `send` loop (fetch, hooks, policy, retry)                                           |
+| `src/policy.ts`               | `defaultPolicy` and the opt-in presets `retry429Policy`, `transientRetryPolicy`                                                      |
+| `src/auth.ts`                 | Builds the OAuth token / device requests                                                                                             |
+| `src/testing.ts`              | Published subpath `allegro-rest-client/testing`: `mockAllegro` fake fetch for consumers' tests                                       |
+| `src/errors.ts`, `helpers.ts` | Error shapes and guards; JWT decode and `getExpiresInHours`                                                                          |
+| `src/typed.ts`                | Compile-time types behind `AllegroRestClient<paths>` (templated calls, typed params and responses)                                   |
+| `src/generated/api.d.ts`      | **Generated** from the spec. Never edit by hand. Shipped as `allegro-rest-client/api-types` (copied by `scripts/copy-api-types.mjs`) |
+| `spec/`                       | Committed copy of Allegro's OpenAPI spec (`swagger.yaml`) plus `spec.meta.json` (source, retrieval date, sha256)                     |
+| `tools/generator/`            | Isolated install (openapi-typescript + TypeScript 5) and `generate.mjs`; kept apart because the library builds with TypeScript 6     |
+| `scripts/spec-update.mjs`     | Downloads the latest spec                                                                                                            |
+| `test/`                       | Offline tests with a mock `fetch` (`helpers.ts`), plus opt-in live tests                                                             |
 
 Application-level concerns (locking across processes, re-authorization, alerting) belong in a consumer's wrapper, not here: see [wrapping.md](wrapping.md).
 
@@ -108,6 +110,37 @@ They need no logged-in user (see [allegro-conventions.md](allegro-conventions.md
 2. Then `await client.get('/me')` and a token refresh (`refreshThresholdHours: 13` makes the next request refresh).
 3. If the token endpoint rejects the form body, construct the client with `tokenParams: 'query'` and decide whether to change the default.
 
+## Unattended user-token CI
+
+`.github/workflows/user-token.yml` keeps a sandbox **user** token alive and runs read-only tests with it (`test/live-user.test.ts`: `/me`, categories, offers, `paginate`). Why it works this way: refresh tokens are single use, so each run spends the stored one and saves the rotated one before anything else uses it (the new tokens are written inside the client's `set`, which is awaited before the request goes out).
+
+What is known about Allegro's tokens, and what is not:
+
+- The access token lives about 12 hours. The refresh token lives longer; **its lifetime is not documented in anything reachable from the analysis environment** (`developer.allegro.pl` was unreachable). One developer in an [allegro-api issue](https://github.com/allegro/allegro-api/issues/10619) says "a year", unconfirmed, and Allegro staff there only point to a tutorial section on when tokens lose validity. The workflow runs on the 1st and 15th, and every run logs the refresh token's expiry if it is a JWT, so the real lifetime shows up in the job log. Adjust the schedule once known.
+- A refresh can consume the token without delivering the new one. In [allegro-api#3622](https://github.com/allegro/allegro-api/issues/3622) a 503 on `refresh_token` had already deleted the old token on Allegro's side; staff's advice was to repeat the authorization. So never retry a token request blindly (the presets do not: POST is not idempotent), and expect that a failed run may need a new bootstrap.
+- The library omits `redirect_uri` when `url_redirect` is not configured; a wrapper in the wild sends it empty. Whether Allegro cares for a valid token is unverified: the first real refresh answers it. If a freshly bootstrapped token fails with `invalid_grant` on the very first refresh, suspect this.
+
+**Setup (once)**
+
+1. Repository secrets: `ALLEGRO_CLIENT_ID`, `ALLEGRO_CLIENT_SECRET` (sandbox device app, already used by `live.yml`), `ALLEGRO_STATE_KEY` (any long random string; it encrypts the stored tokens, keep a copy elsewhere because losing it means a new bootstrap), `CI_STATE_PAT` (fine-grained personal access token limited to this repository with the permission _Variables: read and write_ and nothing else).
+2. Either authorize **on your machine** (no GitHub token needed):
+
+   ```sh
+   ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... CI_STATE_PAT=... npm run ci:authorize
+   ```
+
+   Or put the same `NAME=value` lines (no `export`, no quotes needed) in a `.env` file in the repository root and just run `npm run ci:authorize`; the script loads it (Node 22) and `.env` is git-ignored.
+
+   With `CI_STATE_PAT` (the same fine-grained token as the repository secret) the script writes the variable itself and reads it back; without it, it prints the value to paste. The secret `ALLEGRO_STATE_KEY` is always a one-time paste in the web UI (GitHub only accepts secrets encrypted with libsodium, which this repository does not depend on).
+
+   It prints numbered steps and copy-ready values: the approval URL, then (if you did not set `ALLEGRO_STATE_KEY` yourself, it generates one) the secret `ALLEGRO_STATE_KEY`, and the repository **variable** (not a secret: the job has to write it) `ALLEGRO_USER_TOKENS`, The paste-by-hand value is ciphertext, also saved to `allegro-user-tokens.txt` (git-ignored; delete it afterwards). Or: run the workflow with `mode = bootstrap`, open the verification URL printed in the log (also shown as a notice on the run) within the hour, and approve the sandbox app. The log shows the access token validity, the number of scopes, and the refresh token expiry. The tokens are stored in the repository variable `ALLEGRO_USER_TOKENS` (AES-256-GCM; the repository is public, so the variable holds ciphertext only).
+
+3. From then on the schedule keeps it fresh. Run `mode = refresh` by hand to check.
+
+**When a run fails** the job log says `Re-approval needed` for `invalid_grant`, `invalid_token` or a missing variable: run the workflow with `mode = bootstrap`. A failure to _save_ the rotated tokens (`Could not save the new tokens...`, usually an expired or mis-scoped `CI_STATE_PAT`) also breaks the chain, because the old refresh token is already spent: fix the PAT, then bootstrap. A wrong `ALLEGRO_STATE_KEY` reads as "Cannot decrypt": restore the key or bootstrap.
+
+Not done on purpose: a notification channel beyond GitHub's own failed-run email; a backup copy of the previous generation (the spent token is useless); running on pull requests (secrets are not available to forks and the run must be serialized).
+
 ## Debug a failing request or login
 
 Before guessing, check [allegro-conventions.md](allegro-conventions.md): many surprises (406 on a generic `Accept`, 415 on `application/json`, `/me` returning 500 for application tokens) are documented there. To find out how Allegro behaves right now, re-run the spike described at the end of that file.
@@ -168,7 +201,7 @@ npm pack --dry-run          # contents must be dist/, README.md, LICENSE, packag
 
 1. Do the live login check from [Run the live sandbox tests](#run-the-live-sandbox-tests).
 2. If the spec changed since the last release, make sure the README states the retrieval date (it is read from `spec/spec.meta.json`; keep both in sync).
-3. Bump `version` in `package.json` (`npm version <x.y.z> --no-git-tag-version`), commit `chore(release): vX.Y.Z`, tag `vX.Y.Z`.
+3. Move the "unreleased" entries of `CHANGELOG.md` under the new version. Bump `version` in `package.json` (`npm version <x.y.z> --no-git-tag-version`), commit `chore(release): vX.Y.Z`, tag `vX.Y.Z`.
 4. `npm publish` (add `--tag next` for pre-releases), push the tag, write release notes (behaviour changes first).
 
 Breaking = anything in the README "Upgrading" list changing again, a raised Node floor, removed exports.

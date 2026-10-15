@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { AllegroRestClient } from '../src'
+import { AllegroRestClient, type DeviceResponse } from '../src'
 import { config, json, memoryStorage, mockFetch, tokens, webConfig, within } from './helpers'
 
 const newTokens = {
@@ -165,4 +165,93 @@ test('token and policy requests flow through hooks without credentials', async (
   assert.equal(events[0].kind, 'token')
   assert.ok(!JSON.stringify(events).includes('secret-code'))
   assert.ok(!JSON.stringify(events).includes('client-secret'))
+})
+
+test('token calls carry defaultHeaders but cannot lose Authorization to them', async () => {
+  const { fetch, calls } = mockFetch(() => json(newTokens))
+  const client = await AllegroRestClient(config, {
+    fetch,
+    userAgent: 'my-app/1',
+    defaultHeaders: { authorization: 'Bearer nope', 'content-type': 'text/plain', 'x-team': 'a' },
+  })
+  await client.authorize('dc')
+  assert.equal(calls[0].headers.get('user-agent'), 'my-app/1')
+  assert.equal(calls[0].headers.get('x-team'), 'a')
+  assert.equal(calls[0].headers.get('authorization'), basic)
+  assert.equal(calls[0].headers.get('content-type'), 'application/x-www-form-urlencoded')
+})
+
+test('authorizeApp uses client_credentials, stores the token, and re-requests it instead of refreshing', async () => {
+  let t = 1_700_000_000_000
+  const appToken = { ...newTokens, refresh_token: undefined, expires_in: 43198 }
+  const { fetch, calls } = mockFetch((req) => (req.url.includes('/auth/oauth/token') ? json(appToken) : json({})))
+  const { storage, current } = memoryStorage()
+  const client = await AllegroRestClient(config, { storage, fetch, now: () => t })
+  await client.authorizeApp()
+  assert.equal(calls[0].body, 'grant_type=client_credentials')
+  assert.equal(calls[0].headers.get('authorization'), basic)
+  assert.equal(current()?.grant, 'client_credentials')
+  await client.get('/sale/categories')
+  assert.equal(calls.length, 2)
+  t += 12 * 3600 * 1000
+  await client.get('/sale/categories')
+  assert.deepEqual(
+    calls.map((c) => c.url.includes('/token')),
+    [true, false, true, false],
+  )
+})
+
+test('getAuthorizationUrl builds the web consent URL (sandbox host) and needs url_redirect', async () => {
+  const client = await AllegroRestClient(webConfig, { sandbox: true })
+  const url = new URL(client.getAuthorizationUrl({ state: 's 1', scope: ['a:b', 'c:d'] }))
+  assert.equal(url.origin + url.pathname, 'https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize')
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    response_type: 'code',
+    client_id: 'client-id',
+    redirect_uri: 'https://example.test/cb',
+    state: 's 1',
+    scope: 'a:b c:d',
+  })
+  const device = await AllegroRestClient(config)
+  assert.throws(() => device.getAuthorizationUrl(), { error: 'invalid_option' })
+})
+
+test('pollDevice waits through authorization_pending and slow_down, then stores the tokens', async () => {
+  const answers = [
+    json({ error: 'authorization_pending' }, 400),
+    json({ error: 'slow_down' }, 400),
+    json({ error: 'authorization_pending' }, 400),
+    json(newTokens),
+  ]
+  const { fetch, calls } = mockFetch((_req, n) => answers[n - 1])
+  const sleeps: number[] = []
+  const { storage, current } = memoryStorage()
+  const client = await AllegroRestClient(config, { fetch, storage, sleep: async (ms) => void sleeps.push(ms) })
+  const device = { device_code: 'dc', expires_in: 3600, interval: 5 } as DeviceResponse
+  const result = await client.pollDevice(device)
+  assert.equal(result.access_token, 'new-access')
+  assert.equal(current()?.access_token, 'new-access')
+  assert.deepEqual(sleeps, [5000, 5000, 10_000, 10_000])
+  assert.equal(calls.length, 4)
+})
+
+test('pollDevice stops on a terminal error, on abort and when the code expires', async () => {
+  const { fetch, calls } = mockFetch(() => json({ error: 'access_denied' }, 400))
+  const client = await AllegroRestClient(config, { fetch, sleep: async () => {} })
+  const device = { device_code: 'dc', expires_in: 3600, interval: 1 } as DeviceResponse
+  await assert.rejects(client.pollDevice(device), { error: 'access_denied' })
+  assert.equal(calls.length, 1)
+
+  const aborted = AbortSignal.abort()
+  await assert.rejects(client.pollDevice(device, { signal: aborted }), { error: 'aborted' })
+
+  let t = 0
+  const pending = mockFetch(() => json({ error: 'authorization_pending' }, 400))
+  const slow = await AllegroRestClient(config, {
+    fetch: pending.fetch,
+    now: () => t,
+    sleep: async (ms) => void (t += ms),
+  })
+  await assert.rejects(slow.pollDevice({ ...device, expires_in: 3 }), { error: 'expired_token' })
+  assert.equal(pending.calls.length, 3)
 })

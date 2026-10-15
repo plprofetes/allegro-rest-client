@@ -46,6 +46,8 @@ Sources: search results and one Allegro GitHub thread read on 2026-10-15. **`dev
 
 ### Can user flows be tested unattended in CI?
 
+**Update:** after the first approval by a person, yes: the scheduled workflow `user-token.yml` refreshes and stores the rotating token (see [runbooks.md](runbooks.md#unattended-user-token-ci)). The text below is the original analysis. Allegro's refresh-token lifetime is still unconfirmed, and per [allegro-api#3622](https://github.com/allegro/allegro-api/issues/3622) a refresh answered with a 503 can still consume the token.
+
 **No supported way was found.** The device flow exists so that a person approves the application. No official test mode or fixed approval code was found. Consequences and decisions:
 
 - CI covers everything that works without a user: device code request, `authorization_pending`, token error paths, application tokens and reference-data endpoints (`test/live.test.ts`, the spike).

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { AllegroRestClient, type ClientOptions } from '../src'
+import { AllegroApiError, AllegroRestClient, isAllegroError, type ClientOptions } from '../src'
 import { config, json, memoryStorage, mockFetch, tokens } from './helpers'
 
 // like a socket, a pending request keeps the event loop alive (AbortSignal.timeout timers are unref'd)
@@ -194,4 +194,125 @@ test('a single options object does not leak between clients (default storage is 
   const a = await AllegroRestClient(config)
   const b = await AllegroRestClient(config)
   assert.equal(a.getExpiresInHours(), b.getExpiresInHours())
+})
+
+test('defaultHeaders and userAgent reach API calls; per-request headers win', async () => {
+  const stored = tokens()
+  const { fetch, calls } = mockFetch(() => json({}))
+  const client = await AllegroRestClient(config, {
+    fetch,
+    storage: memoryStorage(stored).storage,
+    userAgent: 'my-app/1',
+    defaultHeaders: { 'X-Team': 'a', Accept: 'application/vnd.allegro.beta.v1+json' },
+  })
+  await client.get('/x')
+  await client.get('/x', { headers: { 'x-team': 'b' } })
+  assert.equal(calls[0].headers.get('user-agent'), 'my-app/1')
+  assert.equal(calls[0].headers.get('x-team'), 'a')
+  assert.equal(calls[0].headers.get('accept'), 'application/vnd.allegro.beta.v1+json')
+  assert.equal(calls[0].headers.get('authorization'), `Bearer ${stored.access_token}`)
+  assert.equal(calls[1].headers.get('x-team'), 'b')
+})
+
+test('a pino-style logger receives structured records (no credentials)', async () => {
+  const records: unknown[][] = []
+  const rec = (level: string) => (fields: object, message: string) => records.push([level, fields, message])
+  const logger = { debug: rec('debug'), info: rec('info'), warn: rec('warn') }
+  const { fetch } = mockFetch(() => json({}))
+  const stored = tokens()
+  const client = await AllegroRestClient(config, { fetch, logger, storage: memoryStorage(stored).storage })
+  await client.get('/x')
+  const request = records.find((r) => (r[2] as string).startsWith('request:'))!
+  assert.equal(request[0], 'debug')
+  assert.deepEqual(request[1], {
+    app_name: 'test-app',
+    account: 'default',
+    method: 'GET',
+    url: 'https://api.allegro.pl/x',
+    kind: 'api',
+    attempt: 1,
+  })
+  assert.ok(!JSON.stringify(records).includes(stored.access_token))
+})
+
+test('paginate walks offset/limit pages until a short page', async () => {
+  const all = Array.from({ length: 5 }, (_, i) => ({ id: i }))
+  const { fetch, calls } = mockFetch((req) => {
+    const q = new URL(req.url).searchParams
+    const offset = Number(q.get('offset'))
+    const items = all.slice(offset, offset + Number(q.get('limit')))
+    return json({ offers: items, count: items.length, totalCount: 5 })
+  })
+  const client = await AllegroRestClient(config, { fetch, storage: memoryStorage(tokens()).storage })
+  const seen: unknown[] = []
+  for await (const offer of client.paginate('/sale/offers', { qs: { limit: 2, 'publication.status': 'ACTIVE' } })) {
+    seen.push(offer)
+  }
+  assert.deepEqual(seen, all)
+  assert.deepEqual(
+    calls.map((c) => new URL(c.url).searchParams.get('offset')),
+    ['0', '2', '4'],
+  )
+  assert.equal(new URL(calls[0].url).searchParams.get('publication.status'), 'ACTIVE')
+})
+
+test('paginate honours maxItems, itemsKey and refuses to guess among several arrays', async () => {
+  const { fetch, calls } = mockFetch(() => json({ a: [1, 2, 3], b: [4] }))
+  const client = await AllegroRestClient(config, { fetch, storage: memoryStorage(tokens()).storage })
+  const drain = async (gen: AsyncIterable<unknown>) => {
+    const out: unknown[] = []
+    for await (const x of gen) out.push(x)
+    return out
+  }
+  await assert.rejects(drain(client.paginate('/x')), { error: 'invalid_response' })
+  assert.deepEqual(await drain(client.paginate('/x', { itemsKey: 'a', maxItems: 2, qs: { limit: 3 } })), [1, 2])
+  assert.equal(calls.length, 2)
+})
+
+test("errorMode 'class' rejects with AllegroApiError carrying the same fields plus HTTP details", async () => {
+  const { fetch } = mockFetch((req) =>
+    req.url.includes('/token')
+      ? json({ error: 'invalid_grant', error_description: 'bad refresh' }, 400)
+      : json({ errors: [{ code: 'ERROR', message: 'm', userMessage: 'Not found', details: 'X' }] }, 404, {
+          'trace-id': 'abc123',
+        }),
+  )
+  const client = await AllegroRestClient(config, {
+    fetch,
+    errorMode: 'class',
+    storage: memoryStorage(tokens()).storage,
+  })
+  const api = await client.get('/sale/offers/1').catch((e) => e)
+  assert.ok(api instanceof AllegroApiError && api instanceof Error)
+  assert.equal(api.status, 404)
+  assert.equal(api.requestId, 'abc123')
+  assert.equal(api.errors?.[0].details, 'X')
+  assert.equal(api.message, 'ERROR: Not found')
+  assert.ok(isAllegroError(api))
+  assert.ok(api.stack)
+
+  const oauth = await client.authorize('dc').catch((e) => e)
+  assert.ok(oauth instanceof AllegroApiError)
+  assert.equal(oauth.error, 'invalid_grant')
+  assert.equal(oauth.message, 'invalid_grant: bad refresh')
+
+  const missing = await (await AllegroRestClient(config, { fetch, errorMode: 'class' })).get('/x').catch((e) => e)
+  assert.equal(missing.error, 'missing_access_token')
+  assert.ok(missing instanceof AllegroApiError)
+})
+
+test("errorMode 'class' leaves your own policy errors alone and defaults stay plain", async () => {
+  class Mine extends Error {}
+  const { fetch } = mockFetch(() => json({}, 500))
+  const storage = memoryStorage(tokens()).storage
+  const custom = await AllegroRestClient(config, {
+    fetch,
+    storage,
+    errorMode: 'class',
+    policy: () => ({ action: 'throw', error: new Mine() }),
+  })
+  assert.ok((await custom.get('/x').catch((e) => e)) instanceof Mine)
+  const plain = await AllegroRestClient(config, { fetch, storage })
+  const err = await plain.get('/x').catch((e) => e)
+  assert.ok(!(err instanceof Error))
 })

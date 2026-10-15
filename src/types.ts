@@ -1,3 +1,5 @@
+import type { Call } from './typed'
+
 export type MaybePromise<T> = T | Promise<T>
 
 export interface ClientConfig {
@@ -12,10 +14,17 @@ export interface ClientConfig {
 /** Where token endpoint parameters are sent. `form` (default) keeps secrets out of URLs. */
 export type TokenParamsStyle = 'form' | 'query'
 
+/** Structured logger in pino's call style: `logger.info({ account }, 'message')`. pino, and anything shaped like it, fits. */
+export interface Logger {
+  debug(fields: Record<string, unknown>, message: string): void
+  info(fields: Record<string, unknown>, message: string): void
+  warn(fields: Record<string, unknown>, message: string): void
+}
+
 export interface ClientOptions {
   sandbox?: boolean
-  /** `true` prints request/refresh info to the console. */
-  logger?: boolean
+  /** `true` prints request/refresh info to the console; a {@link Logger} receives it as structured records. Never contains credentials. */
+  logger?: boolean | Logger
   account?: string
   /** Token persistence. `get` is called once, when the client is constructed. */
   storage?: TokenStorage
@@ -27,6 +36,16 @@ export interface ClientOptions {
   refreshThresholdHours?: number
   /** Where token endpoint parameters are sent. Default `form`. */
   tokenParams?: TokenParamsStyle
+  /** Sent on every API and token request. Per-request `headers` win; the transport's own headers (Authorization, token content type) win on token calls. */
+  defaultHeaders?: Record<string, string>
+  /** Shorthand for a `User-Agent` default header (`defaultHeaders['user-agent']` wins if both are set). */
+  userAgent?: string
+  /**
+   * `'plain'` (default, as in 1.x): rejections are plain objects. `'class'`: Allegro and library failures reject with an
+   * {@link AllegroApiError} (an `Error` with a stack, same fields plus `status`, `headers`, `body`, `requestId`).
+   * Errors thrown by your own policy or hooks are never touched.
+   */
+  errorMode?: 'plain' | 'class'
   /** Lifecycle callbacks (logging, metrics, tracing). */
   hooks?: ClientHooks
   /** Injectable for tests. */
@@ -57,6 +76,8 @@ export interface AuthResponse {
   expires_in: number
   scope: string
   jti: string
+  /** Set to `client_credentials` on application tokens, which have no refresh token and are re-requested instead of refreshed. */
+  grant?: 'client_credentials'
 }
 
 /** OAuth / transport error. Kept under its 1.x name; it shadows the global `Error` only when imported by that name. */
@@ -77,6 +98,13 @@ export interface Errors {
   }[]
 }
 
+export interface PaginateOptions extends Omit<RequestOptions, 'method' | 'body' | 'form' | 'json' | 'raw'> {
+  /** Response property that holds the items. Default: the only array-valued property. */
+  itemsKey?: string
+  /** Stop after this many items. */
+  maxItems?: number
+}
+
 export type RequestHost = 'api' | 'upload'
 
 export interface RequestOptions {
@@ -86,6 +114,8 @@ export interface RequestOptions {
   body?: string | Uint8Array | Blob | FormData | URLSearchParams | ReadableStream
   /** Query string. Arrays become repeated keys (`a=1&a=2`); nested objects are rejected. */
   qs?: Record<string, unknown>
+  /** Templated-path style: `get('/sale/offers/{offerId}', { params: { path: { offerId }, query, header } })`. `query` is merged over `qs`, `header` over `headers`. */
+  params?: { path?: Record<string, string | number>; query?: Record<string, unknown>; header?: Record<string, unknown> }
   /** Sent as an `application/x-www-form-urlencoded` body. */
   form?: Record<string, string | number | boolean>
   /** An object/array is sent as a JSON body (content type defaults to the `Accept` media type). `true` is accepted and ignored. */
@@ -166,18 +196,33 @@ export interface ClientHooks {
   onRetry?(event: RetryHookEvent): void
 }
 
-export interface AllegroClient {
+export interface AllegroClient<Paths extends object = object> {
   /** `undefined` unless `config.type` is `'device'`. */
   bindApp: (() => Promise<DeviceResponse>) | undefined
   authorize: (codeOrDeviceCode: string) => Promise<AuthResponse>
+  /** Web apps: the page to send the user to. Needs `url_redirect`; `state` should be an unguessable value you verify on return. */
+  getAuthorizationUrl: (opts?: { state?: string; scope?: string[] }) => string
+  /**
+   * Device apps: polls until the user approves `device` (honours `interval` and `slow_down`), stores and returns the tokens.
+   * Rejects with Allegro's error (`expired_token`, `access_denied`, ...), or `{ error: 'aborted' }` / `{ error: 'expired_token' }` when `signal` fires or `expires_in` passes.
+   */
+  pollDevice: (device: DeviceResponse, opts?: { signal?: AbortSignal }) => Promise<AuthResponse>
+  /** `client_credentials` grant: an application token without a user (reference data only; ~12 h, re-requested automatically). */
+  authorizeApp: () => Promise<AuthResponse>
   getAccount: () => string
   getSellerId: () => string | null
   /** Hours until the access token expires, as a string with 2 decimals. */
   getExpiresInHours: () => string
+  /**
+   * Yields every item of an `offset`/`limit` endpoint (38 of the paginated GET operations, e.g. `/sale/offers`), one request per page.
+   * `qs.limit` sets the page size (default 100) and `qs.offset` the start. The items are found in the response's only array property, or in `itemsKey`.
+   * Stops at a short page, or after `maxItems`. Cursor endpoints (`page.id`, `from`) are not supported.
+   */
+  paginate: <T = any>(endpoint: string, opts?: PaginateOptions) => AsyncGenerator<T, void, undefined>
   request: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  get: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  post: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  put: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  patch: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  delete: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
+  get: Call<Paths, 'get'>
+  post: Call<Paths, 'post'>
+  put: Call<Paths, 'put'>
+  patch: Call<Paths, 'patch'>
+  delete: Call<Paths, 'delete'>
 }

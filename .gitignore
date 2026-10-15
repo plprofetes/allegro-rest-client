@@ -2,3 +2,7 @@ node_modules
 dist
 .build
 spike-report.json
+allegro-user-tokens.txt
+.env
+.env.*
+!.env.example

@@ -1,0 +1,56 @@
+name: Sandbox user token
+# Keeps a sandbox USER token alive and runs read-only live tests with it. Allegro refresh tokens are single use: every
+# run spends the stored one and saves the rotated one (AES-GCM encrypted) in the repository variable
+# ALLEGRO_USER_TOKENS. Setup and recovery: docs/runbooks.md#unattended-user-token-ci.
+# Secrets: ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET (sandbox device app), ALLEGRO_STATE_KEY (any long random string),
+# CI_STATE_PAT (fine-grained token, this repository only, permission "Variables: read and write").
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'refresh = normal run; bootstrap = new login, a person must approve the app (see the job log)'
+        type: choice
+        options: [refresh, bootstrap]
+        default: refresh
+  schedule:
+    - cron: '23 5 1,15 * *' # twice a month: one spare attempt before a monthly deadline
+# only one run may spend the refresh token at a time, and a running one must never be cancelled halfway
+concurrency:
+  group: allegro-user-token
+  cancel-in-progress: false
+jobs:
+  token:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75 # bootstrap waits up to an hour for the approval
+    container: node:22
+    env:
+      ALLEGRO_CLIENT_ID: ${{ secrets.ALLEGRO_CLIENT_ID }}
+      ALLEGRO_CLIENT_SECRET: ${{ secrets.ALLEGRO_CLIENT_SECRET }}
+      ALLEGRO_STATE_KEY: ${{ secrets.ALLEGRO_STATE_KEY }}
+      CI_STATE_PAT: ${{ secrets.CI_STATE_PAT }}
+    steps:
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q .
+          git fetch -q --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+      - name: Check that the secrets are configured
+        run: |
+          for v in ALLEGRO_CLIENT_ID ALLEGRO_CLIENT_SECRET ALLEGRO_STATE_KEY CI_STATE_PAT; do
+            if [ -z "$(printenv $v)" ]; then echo "::error::Missing repository secret $v (see docs/runbooks.md)"; exit 1; fi
+          done
+      - run: npm ci
+      - run: npm run build:test
+      - name: Bootstrap (a person approves the app)
+        if: github.event.inputs.mode == 'bootstrap'
+        run: node .build/test/ci/token-chain.js bootstrap
+      - name: Refresh the stored token
+        if: github.event.inputs.mode != 'bootstrap'
+        run: node .build/test/ci/token-chain.js refresh
+      - name: Read-only live tests with the user token
+        env:
+          ALLEGRO_USER_LIVE: '1'
+        run: node --test .build/test/live-user.test.js
