@@ -38,6 +38,12 @@ export interface ClientOptions {
   defaultHeaders?: Record<string, string>
   /** Shorthand for a `User-Agent` default header (`defaultHeaders['user-agent']` wins if both are set). */
   userAgent?: string
+  /**
+   * `'plain'` (default, as in 1.x): rejections are plain objects. `'class'`: Allegro and library failures reject with an
+   * {@link AllegroApiError} (an `Error` with a stack, same fields plus `status`, `headers`, `body`, `requestId`).
+   * Errors thrown by your own policy or hooks are never touched.
+   */
+  errorMode?: 'plain' | 'class'
   /** Lifecycle callbacks (logging, metrics, tracing). */
   hooks?: ClientHooks
   /** Injectable for tests. */

@@ -1,5 +1,6 @@
 import { deviceRequest, expectObject, tokenRequest, type TokenEndpoint } from './auth'
 import { buildRequest, send, type SendSpec, type TransportDeps, type Urls } from './http'
+import { toClassError } from './errors'
 import { decodeJwtPayload, getExpiresInHours } from './helpers'
 import { defaultPolicy } from './policy'
 import type {
@@ -233,22 +234,52 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
     }
   }
 
+  const classErrors = options.errorMode === 'class'
+  const guard = <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    classErrors
+      ? async (...args: A): Promise<R> => {
+          try {
+            return await fn(...args)
+          } catch (err) {
+            throw toClassError(err)
+          }
+        }
+      : fn
+  const guardedPaginate = classErrors
+    ? async function* <T = any>(path: string, opts?: PaginateOptions): AsyncGenerator<T, void, undefined> {
+        try {
+          yield* paginate<T>(path, opts)
+        } catch (err) {
+          throw toClassError(err)
+        }
+      }
+    : paginate
+  const request = guard(makeRequest)
+
   const withMethod =
     (method: string) =>
     <T = any>(path: string, opts?: RequestOptions) =>
-      makeRequest<T>(path, { ...opts, method })
+      request<T>(path, { ...opts, method })
 
   return {
-    bindApp: config.type === 'device' ? bindApp : undefined,
-    authorizeApp,
-    getAuthorizationUrl,
-    pollDevice,
-    authorize: config.type === 'device' ? authorizeDevice : authorizeWeb,
+    bindApp: config.type === 'device' ? guard(bindApp) : undefined,
+    authorizeApp: guard(authorizeApp),
+    getAuthorizationUrl: classErrors
+      ? (opts) => {
+          try {
+            return getAuthorizationUrl(opts)
+          } catch (err) {
+            throw toClassError(err)
+          }
+        }
+      : getAuthorizationUrl,
+    pollDevice: guard(pollDevice),
+    authorize: guard(config.type === 'device' ? authorizeDevice : authorizeWeb),
     getAccount: (): string => account,
     getSellerId,
     getExpiresInHours: (): string => getExpiresInHours(tokens, now()).toFixed(2),
-    paginate,
-    request: makeRequest,
+    paginate: guardedPaginate,
+    request,
     get: withMethod('GET'),
     post: withMethod('POST'),
     put: withMethod('PUT'),
@@ -260,7 +291,7 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
 export { AllegroRestClient }
 export { defaultPolicy, retry429Policy, transientRetryPolicy, parseRetryAfter } from './policy'
 export type { RetryOptions, TransientRetryOptions } from './policy'
-export { isAllegroError, isTransportError } from './errors'
+export { AllegroApiError, isAllegroError, isTransportError } from './errors'
 export type {
   AllegroClient,
   AuthResponse,

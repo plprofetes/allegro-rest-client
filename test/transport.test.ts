@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { AllegroRestClient, type ClientOptions } from '../src'
+import { AllegroApiError, AllegroRestClient, isAllegroError, type ClientOptions } from '../src'
 import { config, json, memoryStorage, mockFetch, tokens } from './helpers'
 
 // like a socket, a pending request keeps the event loop alive (AbortSignal.timeout timers are unref'd)
@@ -267,4 +267,52 @@ test('paginate honours maxItems, itemsKey and refuses to guess among several arr
   await assert.rejects(drain(client.paginate('/x')), { error: 'invalid_response' })
   assert.deepEqual(await drain(client.paginate('/x', { itemsKey: 'a', maxItems: 2, qs: { limit: 3 } })), [1, 2])
   assert.equal(calls.length, 2)
+})
+
+test("errorMode 'class' rejects with AllegroApiError carrying the same fields plus HTTP details", async () => {
+  const { fetch } = mockFetch((req) =>
+    req.url.includes('/token')
+      ? json({ error: 'invalid_grant', error_description: 'bad refresh' }, 400)
+      : json({ errors: [{ code: 'ERROR', message: 'm', userMessage: 'Not found', details: 'X' }] }, 404, {
+          'trace-id': 'abc123',
+        }),
+  )
+  const client = await AllegroRestClient(config, {
+    fetch,
+    errorMode: 'class',
+    storage: memoryStorage(tokens()).storage,
+  })
+  const api = await client.get('/sale/offers/1').catch((e) => e)
+  assert.ok(api instanceof AllegroApiError && api instanceof Error)
+  assert.equal(api.status, 404)
+  assert.equal(api.requestId, 'abc123')
+  assert.equal(api.errors?.[0].details, 'X')
+  assert.equal(api.message, 'ERROR: Not found')
+  assert.ok(isAllegroError(api))
+  assert.ok(api.stack)
+
+  const oauth = await client.authorize('dc').catch((e) => e)
+  assert.ok(oauth instanceof AllegroApiError)
+  assert.equal(oauth.error, 'invalid_grant')
+  assert.equal(oauth.message, 'invalid_grant: bad refresh')
+
+  const missing = await (await AllegroRestClient(config, { fetch, errorMode: 'class' })).get('/x').catch((e) => e)
+  assert.equal(missing.error, 'missing_access_token')
+  assert.ok(missing instanceof AllegroApiError)
+})
+
+test("errorMode 'class' leaves your own policy errors alone and defaults stay plain", async () => {
+  class Mine extends Error {}
+  const { fetch } = mockFetch(() => json({}, 500))
+  const storage = memoryStorage(tokens()).storage
+  const custom = await AllegroRestClient(config, {
+    fetch,
+    storage,
+    errorMode: 'class',
+    policy: () => ({ action: 'throw', error: new Mine() }),
+  })
+  assert.ok((await custom.get('/x').catch((e) => e)) instanceof Mine)
+  const plain = await AllegroRestClient(config, { fetch, storage })
+  const err = await plain.get('/x').catch((e) => e)
+  assert.ok(!(err instanceof Error))
 })

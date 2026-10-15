@@ -134,6 +134,7 @@ AllegroRestClient(config, options?)
 | `policy`                | `defaultPolicy`   | Decides what happens after each response, see below                                      |
 | `fetch`                 | global `fetch`    | Your own `fetch` (proxy, keep-alive agent, test double)                                  |
 | `refreshThresholdHours` | `1`               | Refresh when fewer hours remain. `0` turns built-in refresh off (you refresh yourself)   |
+| `errorMode`             | `'plain'`         | `'class'` rejects with `AllegroApiError` instead of plain objects, see "Errors"          |
 | `tokenParams`           | `'form'`          | `'query'` sends OAuth parameters in the URL like 1.x did                                 |
 | `defaultHeaders`        | none              | Headers sent on every API and token request (per-request `headers` win)                  |
 | `userAgent`             | none              | Shorthand for a default `User-Agent` header                                              |
@@ -167,6 +168,8 @@ Every failure is a rejected promise with a plain object (not an `Error` instance
 HTTP details are on non-enumerable properties of the error, so `Object.keys(err)` and `JSON.stringify(err)` stay clean: `err.status`, `err.headers` (a `Headers`), `err.body` (text). Note they disappear if you spread or structured-clone the error.
 
 Helpers: `isAllegroError(err)`, `isTransportError(err)`.
+
+**`errorMode: 'class'`** (opt-in) makes the same failures reject with an `AllegroApiError`, a real `Error` with a stack and the same fields (`error`, `error_description`, `errors`) plus `status`, `headers`, `body` and `requestId` (Allegro's `trace-id`, worth quoting to support). `message` is readable (`ERROR: Product not found`). Errors your own policy throws are passed through untouched, and `isAllegroError` accepts both forms.
 
 A table of codes and what to check is in the [runbooks](docs/runbooks.md#debug-a-failing-request-or-login).
 
