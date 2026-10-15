@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { AllegroRestClient } from '../src'
+import { AllegroApiError, AllegroRestClient, type ClientOptions } from '../src'
 import type { paths } from '../src/generated/api'
 import { githubVariableStorage } from './ci/storage'
 
@@ -8,7 +8,7 @@ import { githubVariableStorage } from './ci/storage'
 // an encrypted repository variable. Run it only after the `refresh` step, so the access token is fresh.
 const live = process.env.ALLEGRO_USER_LIVE === '1'
 
-const make = <P extends object = object>() =>
+const make = <P extends object = object>(extra: ClientOptions = {}) =>
   AllegroRestClient<P>(
     {
       app_name: 'ci',
@@ -20,6 +20,7 @@ const make = <P extends object = object>() =>
       sandbox: true,
       account: 'ci',
       userAgent: 'allegro-rest-client-ci (+https://github.com/plprofetes/allegro-rest-client)',
+      ...extra,
       storage: githubVariableStorage({
         repo: process.env.GITHUB_REPOSITORY!,
         name: process.env.ALLEGRO_STATE_VARIABLE ?? 'ALLEGRO_USER_TOKENS',
@@ -88,6 +89,40 @@ test('live user: paginate follows the cursor of /sale/products', { skip: !live }
   }
   assert.equal(n, 45, 'a second page was fetched (the first has 30)')
   assert.equal(ids.size, 45, 'no product is repeated across pages')
+})
+
+test('live user: getSellerId matches /me and the typed client reads it', { skip: !live }, async () => {
+  const c = await typedClient()
+  const me = await c.get('/me')
+  assert.equal(typeof me.id, 'string')
+  assert.equal(c.getSellerId(), me.id)
+})
+
+test('live user: errorMode class gives a real Error with status and trace-id', { skip: !live }, async () => {
+  const seen: { status: number; requestId?: string }[] = []
+  const c = await make({
+    errorMode: 'class',
+    hooks: { onResponse: (e) => void seen.push({ status: e.status, requestId: e.requestId }) },
+  })
+  // /sale/products without Accept-Language is a stable 422 (2026-10-15)
+  const err = await c.get('/sale/products', { qs: { phrase: 'laptop' } }).catch((e: unknown) => e)
+  assert.ok(err instanceof AllegroApiError, 'rejects with AllegroApiError')
+  assert.equal(err.status, 422)
+  assert.match(err.requestId ?? '', /^[0-9a-f]{8,}$/i, 'trace-id header')
+  assert.equal(err.errors?.[0].code, 'UnsupportedLanguageInAcceptLanguageHeader')
+  assert.ok(err.stack)
+  const ok = seen.find((e) => e.status === 422)
+  assert.equal(ok?.requestId, err.requestId, 'hooks report the same trace-id')
+})
+
+test('live user: bundles use the same cursor shape (empty account is fine)', { skip: !live }, async () => {
+  const c = await client()
+  let n = 0
+  for await (const bundle of c.paginate('/sale/bundles', { cursor: true, qs: { limit: 5 }, maxItems: 12 })) {
+    assert.ok(bundle)
+    n++
+  }
+  assert.ok(n <= 12)
 })
 
 const anAuthError = (e: unknown) => ['invalid_token', 'invalid_grant'].includes((e as { error?: string }).error ?? '')
