@@ -123,7 +123,14 @@ What is known about Allegro's tokens, and what is not:
 **Setup (once)**
 
 1. Repository secrets: `ALLEGRO_CLIENT_ID`, `ALLEGRO_CLIENT_SECRET` (sandbox device app, already used by `live.yml`), `ALLEGRO_STATE_KEY` (any long random string; it encrypts the stored tokens, keep a copy elsewhere because losing it means a new bootstrap), `CI_STATE_PAT` (fine-grained personal access token limited to this repository with the permission _Variables: read and write_ and nothing else).
-2. Run the workflow with `mode = bootstrap`, open the verification URL printed in the log (also shown as a notice on the run) within the hour, and approve the sandbox app. The log shows the access token validity, the number of scopes, and the refresh token expiry. The tokens are stored in the repository variable `ALLEGRO_USER_TOKENS` (AES-256-GCM; the repository is public, so the variable holds ciphertext only).
+2. Either authorize **on your machine** (no GitHub token needed):
+
+   ```sh
+   ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... ALLEGRO_STATE_KEY=... npm run ci:authorize
+   ```
+
+   Open the printed URL, approve, then create the repository **variable** (not a secret: the job has to write it) `ALLEGRO_USER_TOKENS` with the printed value. Use the same `ALLEGRO_STATE_KEY` as in the repository secret; the output is ciphertext. Or: run the workflow with `mode = bootstrap`, open the verification URL printed in the log (also shown as a notice on the run) within the hour, and approve the sandbox app. The log shows the access token validity, the number of scopes, and the refresh token expiry. The tokens are stored in the repository variable `ALLEGRO_USER_TOKENS` (AES-256-GCM; the repository is public, so the variable holds ciphertext only).
+
 3. From then on the schedule keeps it fresh. Run `mode = refresh` by hand to check.
 
 **When a run fails** the job log says `Re-approval needed` for `invalid_grant`, `invalid_token` or a missing variable: run the workflow with `mode = bootstrap`. A failure to _save_ the rotated tokens (`Could not save the new tokens...`, usually an expired or mis-scoped `CI_STATE_PAT`) also breaks the chain, because the old refresh token is already spent: fix the PAT, then bootstrap. A wrong `ALLEGRO_STATE_KEY` reads as "Cannot decrypt": restore the key or bootstrap.

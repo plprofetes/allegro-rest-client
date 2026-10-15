@@ -40,7 +40,8 @@
     "spec:update": "node scripts/spec-update.mjs",
     "spec:refresh": "npm run spec:update && npm run generate",
     "generate": "npm ci --prefix tools/generator --silent && node tools/generator/generate.mjs",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "ci:authorize": "npm run build:test && node .build/test/ci/token-chain.js local"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

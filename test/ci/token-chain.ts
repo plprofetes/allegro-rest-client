@@ -1,8 +1,9 @@
 import { AllegroRestClient, type AuthResponse } from '../../src'
-import { githubVariableStorage } from './storage'
+import { encrypt, githubVariableStorage } from './storage'
 
 // CLI for .github/workflows/user-token.yml:
 //   bootstrap  device flow with a person approving; stores the first tokens
+//   local      same device flow on your machine; prints the encrypted state to paste as a repository variable
 //   refresh    spends the stored refresh token, stores the rotated one, and proves the new token works
 // Never prints tokens. Environment: ALLEGRO_CLIENT_ID/SECRET, GITHUB_REPOSITORY, CI_STATE_PAT, ALLEGRO_STATE_KEY.
 
@@ -77,10 +78,44 @@ async function refresh() {
   summary('refresh', after, before)
 }
 
+/** Runs on your machine: needs only the sandbox keys and ALLEGRO_STATE_KEY, no GitHub token. */
+async function local() {
+  const name = process.env.ALLEGRO_STATE_VARIABLE ?? 'ALLEGRO_USER_TOKENS'
+  let captured: AuthResponse | undefined
+  const client = await AllegroRestClient(
+    {
+      app_name: 'ci',
+      type: 'device',
+      client_id: env('ALLEGRO_CLIENT_ID'),
+      client_secret: env('ALLEGRO_CLIENT_SECRET'),
+    },
+    {
+      sandbox: true,
+      account: 'ci',
+      userAgent: 'allegro-rest-client-ci (+https://github.com/plprofetes/allegro-rest-client)',
+      storage: { get: () => undefined, set: (_account, tokens) => void (captured = tokens) },
+    },
+  )
+  const device = await client.bindApp!()
+  console.log(
+    `Open and approve the sandbox app (valid ${Math.round(device.expires_in / 60)} minutes):\n${device.verification_uri_complete}\n`,
+  )
+  const tokens = await client.pollDevice(device)
+  await client.get('/me')
+  summary('local', captured ?? tokens)
+  const blob = encrypt(JSON.stringify(captured ?? tokens), env('ALLEGRO_STATE_KEY'), name)
+  console.log(
+    `\nCreate the repository VARIABLE (Settings > Secrets and variables > Actions > Variables) named ${name} with this value:\n\n${blob}\n`,
+  )
+  console.log(
+    'Use the same ALLEGRO_STATE_KEY as the repository secret. Do not run anything else with these tokens until the first scheduled refresh: the refresh token is single use.',
+  )
+}
+
 const mode = process.argv[2]
-const run = mode === 'bootstrap' ? bootstrap : mode === 'refresh' ? refresh : undefined
+const run = { bootstrap, refresh, local }[mode as 'bootstrap' | 'refresh' | 'local']
 if (!run) {
-  console.error('usage: token-chain bootstrap|refresh')
+  console.error('usage: token-chain bootstrap|refresh|local')
   process.exit(2)
 }
 run().catch((err: unknown) => {
