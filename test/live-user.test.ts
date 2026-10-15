@@ -32,30 +32,60 @@ const make = <P extends object = object>() =>
 const client = () => make()
 const typedClient = () => make<paths>()
 
-test('live user: /me answers for the stored user token', { skip: !live }, async () => {
-  const me = await (await client()).get<{ id: string }>('/me')
+test('live user: /me describes the account', { skip: !live }, async () => {
+  const me = await (await client()).get<{ id: string; login: string; baseMarketplace: { id: string } }>('/me')
   assert.equal(typeof me.id, 'string')
+  assert.equal(typeof me.login, 'string')
+  assert.equal(typeof me.baseMarketplace.id, 'string')
 })
 
-test('live user: reference data and a seller endpoint are reachable', { skip: !live }, async () => {
-  const c = await client()
-  const categories = await c.get<{ categories: unknown[] }>('/sale/categories')
-  assert.ok(categories.categories.length > 0)
-  // an account that is not verified as a seller gets an Allegro error here, which still proves the token is accepted
-  const offers = await c.get('/sale/offers', { qs: { limit: 1 } }).catch((e: unknown) => e)
-  const rejectedAsAuth = (offers as { error?: string } | null)?.error === 'invalid_token'
-  assert.ok(!rejectedAsAuth, 'the user token was rejected')
+test('live user: reference data is non-empty with a user token', { skip: !live }, async () => {
+  const c = await typedClient()
+  const categories = await c.get('/sale/categories')
+  assert.ok((categories.categories?.length ?? 0) > 0)
+  const methods = await c.get('/sale/delivery-methods')
+  assert.ok(methods.deliveryMethods && methods.deliveryMethods.length > 100) // 584 on 2026-10-15
 })
 
-test('live user: paginate walks a user endpoint without auth errors', { skip: !live }, async () => {
-  const c = await client()
-  const seen: unknown[] = []
-  try {
-    for await (const offer of c.paginate('/sale/offers', { qs: { limit: 5 }, maxItems: 7 })) seen.push(offer)
-  } catch (e) {
-    assert.ok((e as { errors?: unknown }).errors, `unexpected failure: ${JSON.stringify(e)}`) // Allegro error body is fine
+// The sandbox account may have no offers or orders at all (it had none on 2026-10-15), so these check invariants
+// that hold for an empty and for a filled account: the lists are well-formed and `paginate` yields exactly
+// `totalCount` items when that is small.
+for (const [path, key] of [
+  ['/sale/offers', 'offers'],
+  ['/order/checkout-forms', 'checkoutForms'],
+] as const) {
+  test(`live user: ${path} is well-formed and paginate yields totalCount items`, { skip: !live }, async () => {
+    const c = await client()
+    const page = await c.get<Record<string, unknown>>(path, { qs: { limit: 2 } })
+    assert.ok(Array.isArray(page[key]), `${key} is an array`)
+    assert.equal(typeof page.count, 'number')
+    assert.equal(typeof page.totalCount, 'number')
+    const total = page.totalCount as number
+    if (total > 50) return // too many to walk in a smoke test
+    const seen: unknown[] = []
+    for await (const item of c.paginate(path, { qs: { limit: 2 }, maxItems: 50 })) seen.push(item)
+    assert.equal(seen.length, total)
+    // asking beyond the end is not an error
+    const beyond = await c.get<Record<string, unknown>>(path, { qs: { limit: 2, offset: 100000 } })
+    assert.deepEqual(beyond[key], [])
+  })
+}
+
+const anAuthError = (e: unknown) => ['invalid_token', 'invalid_grant'].includes((e as { error?: string }).error ?? '')
+
+test('live user: other seller endpoints do not reject the token', { skip: !live }, async () => {
+  const c = await typedClient()
+  for (const [name, call] of [
+    ['user-ratings', () => c.get('/sale/user-ratings', { params: { query: { limit: 2 } } })],
+    [
+      'return-policies',
+      () => c.get('/after-sales-service-conditions/return-policies', { params: { query: { limit: 2 } } }),
+    ],
+    ['billing-entries', () => c.get('/billing/billing-entries', { params: { query: { limit: 2 } } })],
+  ] as const) {
+    const result = await call().catch((e: unknown) => e)
+    assert.ok(!anAuthError(result), `${name}: the user token was rejected`)
   }
-  assert.ok(seen.length <= 7)
 })
 
 // Exploration, not assertions: prints the SHAPE of what the sandbox answers (key names, array lengths, counts), never
@@ -74,53 +104,29 @@ const shape = (value: unknown): string => {
 
 test('live user: probe response shapes', { skip: !live }, async () => {
   const c = await typedClient()
-  const probe = async (name: string, call: () => Promise<unknown>): Promise<unknown> => {
+  const probe = async (name: string, call: () => Promise<unknown>): Promise<void> => {
     try {
-      const body = await call()
-      console.log(`PROBE ${name}: ok ${shape(body)}`)
-      return body
+      console.log(`PROBE ${name}: ok ${shape(await call())}`)
     } catch (e) {
       const err = e as { error?: string; errors?: { code?: string; message?: string }[]; status?: number }
-      assert.notEqual(err.error, 'invalid_token', `${name}: the user token was rejected`)
+      assert.ok(!anAuthError(err), `${name}: the user token was rejected`)
       console.log(
         `PROBE ${name}: failed status=${err.status} ${err.error ?? ''} ${err.errors?.[0]?.code ?? ''} ${(err.errors?.[0]?.message ?? '').slice(0, 80)}`,
       )
-      return undefined
     }
   }
-  await probe('GET /me', () => c.get('/me'))
-  const offers = (await probe('GET /sale/offers?limit=2', () =>
-    c.get('/sale/offers', { params: { query: { limit: 2 } } }),
-  )) as { offers?: { id: string }[] } | undefined
-  await probe('GET /sale/products?phrase', () => c.get('/sale/products', { params: { query: { phrase: 'iphone' } } }))
-  await probe('GET /order/checkout-forms?limit=2', () =>
-    c.get('/order/checkout-forms', { params: { query: { limit: 2 } } }),
+  // products are paged by a cursor (page.id) and need a supported Accept-Language
+  const headers = { 'Accept-Language': 'pl-PL' }
+  await probe('GET /sale/products?phrase (pl-PL)', () =>
+    c.get('/sale/products', { params: { query: { phrase: 'iphone' }, header: { 'Accept-Language': 'pl-PL' } } }),
   )
-  await probe('GET /sale/user-ratings?limit=2', () => c.get('/sale/user-ratings', { params: { query: { limit: 2 } } }))
-  await probe('GET /after-sales-service-conditions/return-policies', () =>
-    c.get('/after-sales-service-conditions/return-policies', { params: { query: { limit: 2 } } }),
+  await probe('GET /sale/products?phrase untyped headers', () =>
+    c.request('/sale/products', { qs: { phrase: 'laptop' }, headers }),
   )
-  await probe('GET /sale/delivery-methods', () => c.get('/sale/delivery-methods'))
-  await probe('GET /billing/billing-entries?limit=2', () =>
-    c.get('/billing/billing-entries', { params: { query: { limit: 2 } } }),
+  await probe('GET /sale/categories/{id}', () =>
+    c.get('/sale/categories/{categoryId}', { params: { path: { categoryId: '5' } } }),
   )
-  const firstOffer = offers?.offers?.[0]?.id
-  if (firstOffer) {
-    await probe('GET /sale/product-offers/{id}', () =>
-      c.get('/sale/product-offers/{offerId}', { params: { path: { offerId: firstOffer } } }),
-    )
-  } else {
-    console.log('PROBE sale/product-offers/{id}: skipped, the sandbox account has no offers')
-  }
-
-  // pagination: pages of 1, then past the end
-  const walked: string[] = []
-  await probe('paginate /sale/offers limit=1 maxItems=3', async () => {
-    for await (const o of c.paginate<{ id: string }>('/sale/offers', { qs: { limit: 1 }, maxItems: 3 }))
-      walked.push(typeof o.id)
-    return walked
-  })
-  await probe('GET /sale/offers?offset=100000', () =>
-    c.get('/sale/offers', { params: { query: { limit: 1, offset: 100000 } } }),
+  await probe('GET /sale/category-events?limit=2', () =>
+    c.get('/sale/category-events', { params: { query: { limit: 2 } } }),
   )
 })
