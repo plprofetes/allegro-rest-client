@@ -104,6 +104,8 @@ Likely to be done, so ordered by value:
 - Dual CJS + ESM output if demanded.
 - Biome instead of ESLint + prettier; JSR publishing.
 
+- **Unattended user-token CI** (needs persisted state; see [allegro-conventions.md](allegro-conventions.md#can-user-flows-be-tested-unattended-in-ci)). Approve once by hand, then every run refreshes the token and must store the new single-use refresh token before the next run. Requirements: durable storage that the job can read and write (a small external key-value store or database, a self-hosted runner's disk, or the GitHub secrets API with a token allowed to write secrets), a `concurrency` group so only one run refreshes at a time, a `TokenStorage` adapter for the chosen store (the existing interface fits), and a clear failure message telling a human to re-approve when the chain breaks. Then add read-only user-token live tests (`/me`, offers, products) and extend the spike.
+
 ## Out of scope
 
 Refresh-token race handling and multi-process coordination: storage implementations own it. The scenarios that deliberately stay in a consumer's wrapper are listed in [wrapping.md](wrapping.md). Other Allegro APIs not present in the public spec (types can be supplied through the bring-your-own paths type).
