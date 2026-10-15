@@ -114,7 +114,7 @@ Refresh-token race handling and multi-process coordination: storage implementati
 
 - Spec facts (file dated 2026-10-15): OpenAPI 3.0.0, 204 paths, 270 operations, 982 schemas, 11 deprecated operations, unique `operationId`s. `openapi-typescript` 7.13 produces a ~1.4 MB `.d.ts` in ~1.3 s and declares a TypeScript `^5` peer.
 - Allegro documents 429 on only a couple of operations, so presets must handle 429 / `Retry-After` generically.
-- Not verified (Allegro hosts were unreachable from the analysis environment): upstream docs and changelog, refresh-token rotation semantics, the Allegro request-id header name, spec redistribution terms.
+- Not verified (Allegro hosts were unreachable from the analysis environment): upstream docs and changelog, refresh-token rotation semantics (observed on the sandbox 2026-10-15: rotated, 90-day JWT; see runbooks), the Allegro request-id header name (observed: `trace-id`), spec redistribution terms.
 
 ## Implementation status
 
