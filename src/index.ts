@@ -148,6 +148,37 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
     })
   }
 
+  const getAuthorizationUrl = (opts: { state?: string; scope?: string[] } = {}): string => {
+    if (!config.url_redirect) {
+      throw { error: 'invalid_option', error_description: 'getAuthorizationUrl needs "url_redirect" in the config.' }
+    }
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: config.client_id,
+      redirect_uri: config.url_redirect,
+    })
+    if (opts.state) params.set('state', opts.state)
+    if (opts.scope?.length) params.set('scope', opts.scope.join(' '))
+    return `${baseUrl}/auth/oauth/authorize?${params}`
+  }
+
+  const pollDevice = async (device: DeviceResponse, opts: { signal?: AbortSignal } = {}): Promise<AuthResponse> => {
+    const deadline = now() + device.expires_in * 1000
+    let intervalMs = (device.interval || 5) * 1000
+    for (;;) {
+      if (opts.signal?.aborted) throw { error: 'aborted', error_description: 'Polling was aborted.' }
+      if (now() >= deadline) throw { error: 'expired_token', error_description: 'The device code expired.' }
+      await deps.sleep(intervalMs)
+      try {
+        return await authorizeDevice(device.device_code)
+      } catch (err) {
+        const code = (err as { error?: string } | null)?.error
+        if (code === 'slow_down') intervalMs += 5000
+        else if (code !== 'authorization_pending') throw err
+      }
+    }
+  }
+
   const authorizeWeb = async (code: string): Promise<AuthResponse> => {
     log('authorizing web...')
     return obtainTokens({
@@ -181,6 +212,8 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
   return {
     bindApp: config.type === 'device' ? bindApp : undefined,
     authorizeApp,
+    getAuthorizationUrl,
+    pollDevice,
     authorize: config.type === 'device' ? authorizeDevice : authorizeWeb,
     getAccount: (): string => account,
     getSellerId,

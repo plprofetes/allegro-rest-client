@@ -86,7 +86,7 @@ Likely to be done, so ordered by value:
 1. **Quick wins** (done: `defaultHeaders` / `userAgent`, pino-style `Logger` object in addition to hooks, storage recipes with a locking example in [storage-recipes.md](storage-recipes.md)).
 2. **Typed API.** Opt-in paths type: `AllegroRestClient<AllegroPaths>`; untyped by default so nobody loads the 1.4 MB generated file by accident. Templated calls (`get('/sale/offers/{offerId}', { params: { path, query } })`) or `operationId` calls; no loose string overloads that accept typos. Bring-your-own paths type for APIs the public spec does not cover. Generated operation -> `Accept` media type map. Generated types ship as a type-only subpath.
 3. **Errors.** Opt-in `errorMode: 'class'` returning `AllegroApiError` (status, headers, `errors[]`, request id, stack); considered as the default in a later major.
-4. **Auth.** (`client_credentials` done as `authorizeApp()`) authorization-URL builder for the web flow; device-flow poller (`authorization_pending` / `slow_down`) with injectable persistence and sleep.
+4. **Auth** (done: `client_credentials` as `authorizeApp()`, `getAuthorizationUrl()`, `pollDevice()` using the client's injectable `sleep`/`now`). Persisting a pending device code across restarts stays in the wrapper (see wrapping.md #6).
 5. **Pagination** async iterators (44 paginated operations).
 6. **Testing helpers.** Mock `fetch` / recorded-fixture helper for consumers.
 7. **Docs.** Quickstart per auth flow; recipes (upload an image, download a label, paginate offers, handle 429, multiple accounts via a shared-config factory); typedoc reference.

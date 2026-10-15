@@ -183,6 +183,13 @@ export interface AllegroClient {
   /** `undefined` unless `config.type` is `'device'`. */
   bindApp: (() => Promise<DeviceResponse>) | undefined
   authorize: (codeOrDeviceCode: string) => Promise<AuthResponse>
+  /** Web apps: the page to send the user to. Needs `url_redirect`; `state` should be an unguessable value you verify on return. */
+  getAuthorizationUrl: (opts?: { state?: string; scope?: string[] }) => string
+  /**
+   * Device apps: polls until the user approves `device` (honours `interval` and `slow_down`), stores and returns the tokens.
+   * Rejects with Allegro's error (`expired_token`, `access_denied`, ...), or `{ error: 'aborted' }` / `{ error: 'expired_token' }` when `signal` fires or `expires_in` passes.
+   */
+  pollDevice: (device: DeviceResponse, opts?: { signal?: AbortSignal }) => Promise<AuthResponse>
   /** `client_credentials` grant: an application token without a user (reference data only; ~12 h, re-requested automatically). */
   authorizeApp: () => Promise<AuthResponse>
   getAccount: () => string

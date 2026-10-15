@@ -36,16 +36,16 @@ const client = await AllegroRestClient(
 
 if (client.getExpiresInHours() === '0.00') {
   // not authorized yet
-  const { verification_uri_complete, device_code } = await client.bindApp!()
-  console.log('Approve the app at', verification_uri_complete)
-  // poll until the user approved; it rejects with { error: 'authorization_pending' } until then
-  await client.authorize(device_code)
+  const device = await client.bindApp!()
+  console.log('Approve the app at', device.verification_uri_complete)
+  // waits until the user approves (honours interval and slow_down); pass { signal } to cancel
+  await client.pollDevice(device)
 }
 
 const { categories } = await client.get('/sale/categories')
 ```
 
-For a **web** app, send the user to `https://allegro.pl/auth/oauth/authorize?response_type=code&client_id=...&redirect_uri=...` (sandbox: `allegro.pl.allegrosandbox.pl`), then call `client.authorize(code)` with the `code` Allegro appends to your redirect URL. `bindApp` is `undefined` for web apps.
+For a **web** app, send the user to `client.getAuthorizationUrl({ state })` (needs `url_redirect`; verify `state` when they return), then call `client.authorize(code)` with the `code` Allegro appends to your redirect URL. `bindApp` is `undefined` for web apps. Without `pollDevice` you can loop on `client.authorize(device_code)` yourself; it rejects with `{ error: 'authorization_pending' }` until approved.
 
 For **reference data without a user** (categories, delivery methods, carriers; about 12 operations), call `await client.authorizeApp()` (`client_credentials`). The application token lasts about 12 hours and is requested again automatically when it runs low. It replaces whatever tokens the `account` holds, so give it its own `account` if the same storage also holds a user's tokens.
 
