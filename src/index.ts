@@ -210,31 +210,42 @@ async function AllegroRestClient<Paths extends object = object>(
     return (await send(deps, { ...built, kind: 'api', policy: built.policy ?? policy })) as T
   }
 
+  const itemsOf = (page: unknown, itemsKey: string | undefined): unknown[] => {
+    const record = (page ?? {}) as Record<string, unknown>
+    const keys = itemsKey ? [itemsKey] : Object.keys(record).filter((key) => Array.isArray(record[key]))
+    const items = keys.length === 1 ? record[keys[0]] : undefined
+    if (!Array.isArray(items)) {
+      throw {
+        error: 'invalid_response',
+        error_description: itemsKey
+          ? `Response has no array "${itemsKey}".`
+          : 'Cannot tell which response property holds the items; pass "itemsKey".',
+      }
+    }
+    return items
+  }
+
   async function* paginate<T = any>(path: string, opts: PaginateOptions = {}): AsyncGenerator<T, void, undefined> {
-    const { itemsKey, maxItems = Infinity, ...rest } = opts
+    const { itemsKey, maxItems = Infinity, cursor = false, ...rest } = opts
     const limit = Number(rest.qs?.limit ?? 100)
     let offset = Number(rest.qs?.offset ?? 0)
+    let pageId: string | undefined
     let yielded = 0
     while (yielded < maxItems) {
-      const page = await makeRequest<Record<string, unknown>>(path, { ...rest, qs: { ...rest.qs, limit, offset } })
-      const arrays = itemsKey
-        ? [itemsKey]
-        : Object.keys(page ?? {}).filter((key) => Array.isArray((page as Record<string, unknown>)[key]))
-      const items = arrays.length === 1 ? (page as Record<string, unknown>)[arrays[0]] : undefined
-      if (!Array.isArray(items)) {
-        throw {
-          error: 'invalid_response',
-          error_description: itemsKey
-            ? `Response has no array "${itemsKey}".`
-            : 'Cannot tell which response property holds the items; pass "itemsKey".',
-        }
-      }
+      const qs = cursor ? { ...rest.qs, ...(pageId ? { 'page.id': pageId } : {}) } : { ...rest.qs, limit, offset }
+      const page = await makeRequest<Record<string, unknown>>(path, { ...rest, qs })
+      const items = itemsOf(page, itemsKey)
       for (const item of items) {
         if (yielded++ >= maxItems) return
         yield item as T
       }
-      if (items.length < limit) return
-      offset += items.length
+      if (cursor) {
+        pageId = (page.nextPage as { id?: string } | null | undefined)?.id
+        if (!pageId || items.length === 0) return
+      } else {
+        if (items.length < limit) return
+        offset += items.length
+      }
     }
   }
 

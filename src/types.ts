@@ -103,6 +103,8 @@ export interface PaginateOptions extends Omit<RequestOptions, 'method' | 'body' 
   itemsKey?: string
   /** Stop after this many items. */
   maxItems?: number
+  /** Cursor endpoints (`nextPage.id` in the response, `page.id` in the query): `/sale/products`, `/sale/bundles`, `/sale/flexible-bundles`. No `limit`/`offset` is added. */
+  cursor?: boolean
 }
 
 export type RequestHost = 'api' | 'upload'
@@ -216,7 +218,7 @@ export interface AllegroClient<Paths extends object = object> {
   /**
    * Yields every item of an `offset`/`limit` endpoint (38 of the paginated GET operations, e.g. `/sale/offers`), one request per page.
    * `qs.limit` sets the page size (default 100) and `qs.offset` the start. The items are found in the response's only array property, or in `itemsKey`.
-   * Stops at a short page, or after `maxItems`. Cursor endpoints (`page.id`, `from`) are not supported.
+   * Stops at a short page, or after `maxItems`. With `cursor: true` it follows `nextPage.id` instead. The `from` endpoints (events) are not supported.
    */
   paginate: <T = any>(endpoint: string, opts?: PaginateOptions) => AsyncGenerator<T, void, undefined>
   request: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>

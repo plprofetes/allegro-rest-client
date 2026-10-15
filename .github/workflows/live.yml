@@ -7,7 +7,7 @@ on:
   schedule:
     - cron: '17 6 * * 1'
   push:
-    branches: [main, master, claude/sharp-babbage-pgo77g] # TEMP: remove the feature branch once merged
+    branches: [main, master]
 jobs:
   live:
     runs-on: ubuntu-latest
