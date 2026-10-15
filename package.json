@@ -31,6 +31,7 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "spec:update": "node scripts/spec-update.mjs",
+    "spec:refresh": "npm run spec:update && npm run generate",
     "generate": "npm ci --prefix tools/generator --silent && node tools/generator/generate.mjs",
     "prepare": "npm run build"
   },

@@ -50,11 +50,12 @@ npm run build     # emits dist/
 The spec is Allegro's, fetched from `https://developer.allegro.pl/swagger.yaml`. Always record when it was retrieved (`spec/spec.meta.json` does this).
 
 ```sh
-npm run spec:update   # downloads, rewrites spec/swagger.yaml and spec/spec.meta.json (sha256 + today's date)
-npm run generate      # installs the isolated generator, rewrites src/generated/api.d.ts
+npm run spec:refresh  # = spec:update (download, rewrite spec/swagger.yaml + spec/spec.meta.json) then generate
 npm test              # the drift test must pass; type assertions in test/types.test.ts must still compile
 git diff --stat spec src/generated
 ```
+
+The two halves are also available separately: `npm run spec:update` downloads and records the retrieval date; `npm run generate` (re)writes `src/generated/api.d.ts` from the committed spec, e.g. after bumping the generator. `api.d.ts` is never edited by hand and never needs regenerating unless the spec or the generator changed; the drift test tells you when it does.
 
 Before committing, look for **removed or changed paths** in `git diff src/generated/api.d.ts` (removals are breaking for anyone using the generated types). Then:
 
@@ -95,7 +96,9 @@ ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... ALLEGRO_URL_REDIRECT=https://you
 npm test
 ```
 
-They check the error shapes returned by the real token endpoint and the missing-token path. **Release gate:** token requests send their parameters in a form body (the 1.x code used the query string). That is standard OAuth and expected to work, but it has not been verified against Allegro. Before every release, do one real login with the built client:
+They need no logged-in user. They send deliberately bad input (an invalid code, a bogus refresh token) to the real sandbox and check the answers, which also proves the token requests are understood: Allegro echoes the invalid code back, so an `invalid_grant` that mentions it means the form body arrived. They run for both `tokenParams: 'form'` and `'query'`.
+
+**In CI**: `.github/workflows/live.yml` (manual, weekly, and on pushes to main) runs only these tests. Add the repository secrets `ALLEGRO_CLIENT_ID`, `ALLEGRO_CLIENT_SECRET` and `ALLEGRO_URL_REDIRECT` of a sandbox **web** application (Settings > Secrets and variables > Actions). If the job fails right away with "credentials are configured", the secrets are missing or the application was deleted: register a new sandbox app and update the secrets. Secrets are not exposed to pull requests from forks, which is why the job does not run on pull requests. **Release gate:** token requests send their parameters in a form body (the 1.x code used the query string). The live tests above verify that Allegro accepts it for the code exchange and refresh grants. Before every release, also do one real login with the built client (this needs a person):
 
 1. Device app: `const { verification_uri_complete, device_code } = await client.bindApp()`, open the URL, approve, then `await client.authorize(device_code)` (it rejects with `authorization_pending` until approved).
 2. Then `await client.get('/me')` and a token refresh (`refreshThresholdHours: 13` makes the next request refresh).

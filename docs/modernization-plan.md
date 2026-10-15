@@ -123,5 +123,5 @@ Phase 1a and 1b are implemented; maintenance procedures are in [runbooks.md](run
 - CI is a single workflow (lint, tests, build) on Node 22 and 24, not 26.
 - Hooks, `raw`, `host: 'upload'`, `signal`/`timeout`, injectable `fetch` and per-request `policy` landed together with the transport instead of as a separate step; the console `logger` is implemented on the same hooks.
 - The migration guide lives in the README ("Upgrading from 1.x") rather than a separate file.
-- `tokenParams` (`'form'` default, `'query'` as the escape hatch) was added because the form-body token requests are **not yet verified against the live Allegro token endpoint**. This is the release gate described in the runbooks.
+- `tokenParams` (`'form'` default, `'query'` as the escape hatch) was added because the form-body token requests are **not yet verified against the live Allegro token endpoint**. The live sandbox tests (`.github/workflows/live.yml`, repository secrets) check that Allegro accepts both styles; one real login remains the release gate described in the runbooks.
 - Open items: Allegro's terms for redistributing the spec (the README states the retrieval date and ownership), the name of Allegro's request-id response header (the hook checks `trace-id`, `x-trace-id`, `x-request-id`), the original sample credentials that remain in git history and must be rotated.
