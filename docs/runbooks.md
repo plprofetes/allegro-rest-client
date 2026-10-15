@@ -88,17 +88,17 @@ If the generator itself changed output (after bumping `tools/generator`), regene
 
 ## Run the live sandbox tests
 
-The offline suite never touches the network. Live tests are opt-in and use an Allegro **sandbox** application you registered (`https://apps.developer.allegro.pl.allegrosandbox.pl`). Never put credentials in the repo; pass them through the environment.
+The offline suite never touches the network. Live tests are opt-in and use an Allegro **sandbox** application you registered (type **device**; web/redirect apps are not used) (`https://apps.developer.allegro.pl.allegrosandbox.pl`). Never put credentials in the repo; pass them through the environment.
 
 ```sh
 ALLEGRO_LIVE=1 \
-ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... ALLEGRO_URL_REDIRECT=https://your-redirect.example \
+ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... \
 npm test
 ```
 
-They need no logged-in user. They send deliberately bad input (an invalid code, a bogus refresh token) to the real sandbox and check the answers, which also proves the token requests are understood: Allegro echoes the invalid code back, so an `invalid_grant` that mentions it means the form body arrived. They run for both `tokenParams: 'form'` and `'query'`.
+They need no logged-in user. `bindApp()` is answered anonymously, and exchanging the fresh `device_code` before anybody approved it must be answered with `authorization_pending`. Together that proves Allegro understands our token requests (Basic auth, grant type, parameters). They run for both `tokenParams: 'form'` and `'query'`, and also check a bogus refresh token, the missing-token path and a fake access token.
 
-**In CI**: `.github/workflows/live.yml` (manual, weekly, and on pushes to main) runs only these tests. Add the repository secrets `ALLEGRO_CLIENT_ID`, `ALLEGRO_CLIENT_SECRET` and `ALLEGRO_URL_REDIRECT` of a sandbox **web** application (Settings > Secrets and variables > Actions). If the job fails right away with "credentials are configured", the secrets are missing or the application was deleted: register a new sandbox app and update the secrets. Secrets are not exposed to pull requests from forks, which is why the job does not run on pull requests. **Release gate:** token requests send their parameters in a form body (the 1.x code used the query string). The live tests above verify that Allegro accepts it for the code exchange and refresh grants. Before every release, also do one real login with the built client (this needs a person):
+**In CI**: `.github/workflows/live.yml` (manual, weekly, and on pushes to main) runs only these tests. Add the repository secrets `ALLEGRO_CLIENT_ID` and `ALLEGRO_CLIENT_SECRET` of a sandbox **device** application (Settings > Secrets and variables > Actions). If the job fails right away with "credentials are configured", the secrets are missing or the application was deleted: register a new sandbox app and update the secrets. Secrets are not exposed to pull requests from forks, which is why the job does not run on pull requests. **Release gate:** token requests send their parameters in a form body (the 1.x code used the query string). The live tests above verify that Allegro accepts it for the device-code exchange and the refresh grant. Before every release, also do one real login with the built client (this needs a person):
 
 1. Device app: `const { verification_uri_complete, device_code } = await client.bindApp()`, open the URL, approve, then `await client.authorize(device_code)` (it rejects with `authorization_pending` until approved).
 2. Then `await client.get('/me')` and a token refresh (`refreshThresholdHours: 13` makes the next request refresh).

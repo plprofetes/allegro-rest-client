@@ -1,6 +1,6 @@
 name: Live sandbox
-# Talks to the Allegro sandbox with a registered *web* application. Needs three repository secrets
-# (Settings > Secrets and variables > Actions): ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET, ALLEGRO_URL_REDIRECT.
+# Talks to the Allegro sandbox with a registered *device* application (no user login needed). Needs two
+# repository secrets (Settings > Secrets and variables > Actions): ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET.
 # Secrets are not available to pull requests from forks, so this runs on demand, weekly, and on pushes to main.
 on:
   workflow_dispatch:
@@ -15,7 +15,6 @@ jobs:
       ALLEGRO_LIVE: '1'
       ALLEGRO_CLIENT_ID: ${{ secrets.ALLEGRO_CLIENT_ID }}
       ALLEGRO_CLIENT_SECRET: ${{ secrets.ALLEGRO_CLIENT_SECRET }}
-      ALLEGRO_URL_REDIRECT: ${{ secrets.ALLEGRO_URL_REDIRECT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,7 +24,7 @@ jobs:
       - name: Check that the secrets are configured
         run: |
           if [ -z "$ALLEGRO_CLIENT_ID" ] || [ -z "$ALLEGRO_CLIENT_SECRET" ]; then
-            echo "::error::Add the repository secrets ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET and ALLEGRO_URL_REDIRECT (sandbox web app)."
+            echo "::error::Add the repository secrets ALLEGRO_CLIENT_ID and ALLEGRO_CLIENT_SECRET (sandbox device app)."
             exit 1
           fi
       - run: npm ci
