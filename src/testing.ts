@@ -76,8 +76,11 @@ export function mockAllegro(routes: Record<string, MockRoute>) {
     fetch: fetchImpl as typeof fetch,
     calls,
     /** A client wired to this mock and already authorized. */
-    client: (options: ClientOptions = {}, config?: Partial<ClientConfig>): Promise<AllegroClient> =>
-      AllegroRestClient(
+    client: <Paths extends object = object>(
+      options: ClientOptions = {},
+      config?: Partial<ClientConfig>,
+    ): Promise<AllegroClient<Paths>> =>
+      AllegroRestClient<Paths>(
         { app_name: 'test', type: 'device', client_id: 'id', client_secret: 'secret', ...config },
         { storage: { get: () => tokens, set: () => {} }, ...options, fetch: fetchImpl as typeof fetch },
       ),
