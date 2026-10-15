@@ -19,7 +19,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "llms.txt"
   ],
   "engines": {
     "node": ">=22"
@@ -41,7 +42,8 @@
     "spec:refresh": "npm run spec:update && npm run generate",
     "generate": "npm ci --prefix tools/generator --silent && node tools/generator/generate.mjs",
     "prepare": "npm run build",
-    "ci:authorize": "npm run build:test && node --env-file-if-exists=.env .build/test/ci/token-chain.js local"
+    "ci:authorize": "npm run build:test && node --env-file-if-exists=.env .build/test/ci/token-chain.js local",
+    "examples": "npm run build && tsc -p tsconfig.examples.json && node scripts/run-examples.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

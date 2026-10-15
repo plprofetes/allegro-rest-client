@@ -23,6 +23,7 @@ Short, copy-pasteable procedures for the recurring jobs on this repo. Written fo
 | `src/http.ts`                 | Request building (`buildRequest`) and the single `send` loop (fetch, hooks, policy, retry)                                           |
 | `src/policy.ts`               | `defaultPolicy` and the opt-in presets `retry429Policy`, `transientRetryPolicy`                                                      |
 | `src/auth.ts`                 | Builds the OAuth token / device requests                                                                                             |
+| `examples/`                   | Runnable, self-checking samples (`npm run examples`, run in CI); `llms.txt` at the root is the one-page API summary                  |
 | `src/testing.ts`              | Published subpath `allegro-rest-client/testing`: `mockAllegro` fake fetch for consumers' tests                                       |
 | `src/errors.ts`, `helpers.ts` | Error shapes and guards; JWT decode and `getExpiresInHours`                                                                          |
 | `src/typed.ts`                | Compile-time types behind `AllegroRestClient<paths>` (templated calls, typed params and responses)                                   |
@@ -181,6 +182,8 @@ Add an **option** to `request()`:
 2. Handle it in `buildRequest` (`src/http.ts`); if it changes how a request is sent, handle it in `send`.
 3. Test in `test/transport.test.ts` using the `setup()` helper (`calls[n]` shows exactly what reached `fetch`).
 4. Mention it in the README options table.
+
+When you change behaviour or add an option, update the example that shows it (`npm run examples` fails if an example's assertions no longer hold) and `llms.txt`.
 
 Add a **client option**: `ClientOptions` in `src/types.ts` → read it in the `AllegroRestClient` factory (`src/index.ts`) → test in the closest test file → README.
 

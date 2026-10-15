@@ -6,3 +6,4 @@ allegro-user-tokens.txt
 .env
 .env.*
 !.env.example
+.allegro-tokens.json

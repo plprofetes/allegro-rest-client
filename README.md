@@ -49,7 +49,7 @@ For a **web** app, send the user to `client.getAuthorizationUrl({ state })` (nee
 
 For **reference data without a user** (categories, delivery methods, carriers; about 12 operations), call `await client.authorizeApp()` (`client_credentials`). The application token lasts about 12 hours and is requested again automatically when it runs low. It replaces whatever tokens the `account` holds, so give it its own `account` if the same storage also holds a user's tokens.
 
-More: [recipes](docs/recipes.md) (quickstart per auth flow, 429, several accounts) and [storage recipes](docs/storage-recipes.md).
+Runnable samples (offline by default, sandbox with `LIVE=1`): [examples/](examples/README.md). One-page API summary for tools and LLMs: [llms.txt](llms.txt). More: [recipes](docs/recipes.md) (quickstart per auth flow, 429, several accounts) and [storage recipes](docs/storage-recipes.md).
 
 ## Making requests
 

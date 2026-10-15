@@ -1,0 +1,56 @@
+# allegro-rest-client
+
+> Zero-dependency, typed Node 22+ client for the Allegro REST API (allegro.pl). Handles OAuth2 (device, web, client_credentials), token refresh, one fetch-based transport, retries via injectable policies, pagination and optional types generated from Allegro's OpenAPI specification.
+
+Package: `allegro-rest-client` (a CommonJS build with types; `import` and `require` both work, Node 22+).
+Entry points: `allegro-rest-client` (client), `allegro-rest-client/api-types` (type-only generated `paths`), `allegro-rest-client/testing` (`mockAllegro`).
+Runnable examples: examples/README.md. Behaviour Allegro does not document: docs/allegro-conventions.md.
+
+## Create a client
+
+```ts
+import { AllegroRestClient } from 'allegro-rest-client'
+const client = await AllegroRestClient(
+  { app_name: 'shop', type: 'device', client_id, client_secret }, // type: 'device' | 'web' ('web' also needs url_redirect)
+  { sandbox: true, storage, userAgent: 'shop/1.0' },              // all options optional
+)
+```
+
+Options: `sandbox`, `account` (storage key, default 'default'), `storage` ({ get(account), set(account, tokens) }; default memory), `userAgent`, `defaultHeaders`, `policy`, `hooks`, `logger` (true | pino-style), `errorMode` ('plain' | 'class'), `refreshThresholdHours` (default 1; 0 = you refresh), `tokenParams` ('form' | 'query'), `fetch`, `sleep`, `now`.
+
+## Auth (examples/01-authorize.mts)
+
+- Device app: `const device = await client.bindApp(); show(device.verification_uri_complete); await client.pollDevice(device)`.
+- Web app: `client.getAuthorizationUrl({ state })` then `await client.authorize(code)` in the redirect handler.
+- No user (only ~12 reference-data endpoints): `await client.authorizeApp()`. It replaces the tokens of that `account`.
+- Access token ~12 h, refreshed automatically. The refresh token is SINGLE USE and rotates; `storage.get` is called once at creation, `set` after every refresh. Share one account across processes only with a locking storage (docs/storage-recipes.md).
+
+## Requests (examples/02-requests.mts)
+
+- `client.get|post|put|patch|delete(path, options)` and untyped `client.request(path, { method, ... })`. Result = parsed JSON body (empty string for 204).
+- Options: `qs`, `json` (Content-Type defaults to Allegro's vendor type), `form`, `body` (string | Buffer | Blob | FormData | URLSearchParams | stream; a string has NO content type), `headers`, `params: { path, query, header }` for templated paths (`'/sale/product-offers/{offerId}'`), `host: 'upload'` (images, attachments), `raw: true` (returns Response), `timeout`, `signal`, `policy`.
+- Typed: `AllegroRestClient<paths>` with `import type { paths } from 'allegro-rest-client/api-types'`; then only real paths and query parameters compile. Untyped by default.
+- Pagination: `for await (const item of client.paginate(path, { qs: { limit: 100 }, maxItems, itemsKey, cursor }))`. `cursor: true` for `nextPage.id` / `page.id` endpoints (products, bundles). Not for `from` event feeds.
+
+## Allegro rules that bite (verified on the sandbox, see docs/allegro-conventions.md)
+
+- `Accept` must be the vendor type (default `application/vnd.allegro.public.v1+json`); `application/json` gives 406. Beta endpoints need `application/vnd.allegro.beta.v1+json`. Binary responses (`raw: true`) need the media type the spec lists.
+- `Content-Type` on writes must be the vendor type; `application/json` and `text/plain` give 415.
+- Some endpoints need `Accept-Language` (`/sale/products` answers 422 without `pl-PL`).
+- `GET /me` needs a user token (500 with an application token). Result window: offset+limit > 10000 is refused on some endpoints.
+- Errors: Allegro `{ errors: [{ code, message, userMessage, details, path, metadata }] }` or OAuth `{ error, error_description }`; `trace-id` response header = request id (quote it to support).
+
+## Errors, retries, observability
+
+- Plain mode rejects with the body object (HTTP details non-enumerable: `status`, `headers`, `body`); `errorMode: 'class'` rejects with `AllegroApiError` (+ `requestId`). Guards: `isAllegroError`, `isTransportError`. (examples/06-errors.mts)
+- No retries by default. `retry429Policy({ maxAttempts, next })`, `transientRetryPolicy()` (never POST/PATCH), or your own `(ctx) => { action: 'return' | 'retry' | 'throw' }`. (examples/07)
+- `hooks: { onRequest, onResponse, onError, onRetry }` never see tokens. (examples/08)
+
+## Testing (examples/10-testing-your-code.mts)
+
+`const mock = mockAllegro({ 'GET /sale/offers': { body: {...} } }); const client = await mock.client(); mock.calls`.
+Unmatched routes answer 404 `MOCK_ROUTE_MISSING`.
+
+## Not in this library on purpose
+
+Cross-process locking, re-authorization with a human, alerting, rate-limit queues: see docs/wrapping.md.

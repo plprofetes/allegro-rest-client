@@ -21,3 +21,4 @@ jobs:
       - run: npm run lint
       - run: npm test # includes the spec drift test (installs the isolated generator)
       - run: npm run build
+      - run: npm run examples # type-checks and runs examples/ offline
