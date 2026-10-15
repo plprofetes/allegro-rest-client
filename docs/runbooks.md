@@ -126,10 +126,12 @@ What is known about Allegro's tokens, and what is not:
 2. Either authorize **on your machine** (no GitHub token needed):
 
    ```sh
-   ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... npm run ci:authorize
+   ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... CI_STATE_PAT=... npm run ci:authorize
    ```
 
-   It prints numbered steps and copy-ready values: the approval URL, then (if you did not set `ALLEGRO_STATE_KEY` yourself, it generates one) the secret `ALLEGRO_STATE_KEY`, and the repository **variable** (not a secret: the job has to write it) `ALLEGRO_USER_TOKENS`, plus the equivalent `gh` commands. The value is ciphertext, also saved to `allegro-user-tokens.txt` (git-ignored; delete it afterwards). Or: run the workflow with `mode = bootstrap`, open the verification URL printed in the log (also shown as a notice on the run) within the hour, and approve the sandbox app. The log shows the access token validity, the number of scopes, and the refresh token expiry. The tokens are stored in the repository variable `ALLEGRO_USER_TOKENS` (AES-256-GCM; the repository is public, so the variable holds ciphertext only).
+   With `CI_STATE_PAT` (the same fine-grained token as the repository secret) the script writes the variable itself and reads it back; without it, it prints the value to paste. The secret `ALLEGRO_STATE_KEY` is always a one-time paste in the web UI (GitHub only accepts secrets encrypted with libsodium, which this repository does not depend on).
+
+   It prints numbered steps and copy-ready values: the approval URL, then (if you did not set `ALLEGRO_STATE_KEY` yourself, it generates one) the secret `ALLEGRO_STATE_KEY`, and the repository **variable** (not a secret: the job has to write it) `ALLEGRO_USER_TOKENS`, The paste-by-hand value is ciphertext, also saved to `allegro-user-tokens.txt` (git-ignored; delete it afterwards). Or: run the workflow with `mode = bootstrap`, open the verification URL printed in the log (also shown as a notice on the run) within the hour, and approve the sandbox app. The log shows the access token validity, the number of scopes, and the refresh token expiry. The tokens are stored in the repository variable `ALLEGRO_USER_TOKENS` (AES-256-GCM; the repository is public, so the variable holds ciphertext only).
 
 3. From then on the schedule keeps it fresh. Run `mode = refresh` by hand to check.
 

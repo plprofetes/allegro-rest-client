@@ -108,35 +108,49 @@ async function local() {
   const tokens = await client.pollDevice(device)
   await client.get('/me')
   summary('local', captured ?? tokens)
-  const blob = encrypt(JSON.stringify(captured ?? tokens), stateKey, name)
-  const file = process.env.ALLEGRO_STATE_OUT ?? 'allegro-user-tokens.txt'
-  writeFileSync(file, blob + '\n', { mode: 0o600 })
-
+  const saved = captured ?? tokens
   const bar = '='.repeat(72)
+  const pat = process.env.CI_STATE_PAT
   console.log(`\nApproved. Now put the result into GitHub (${repo}).\n`)
+
+  let step = 2
   if (generatedKey) {
     console.log(
-      `${bar}\nSTEP 2. Create the repository SECRET ALLEGRO_STATE_KEY with this value (you had none; keep a copy somewhere safe):\n${bar}\n${generatedKey}\n${bar}\n`,
+      `${bar}\nSTEP ${step++}. Create the repository SECRET ALLEGRO_STATE_KEY with this value (you had none; keep a copy somewhere safe):\n${bar}\n${generatedKey}\n${bar}\nWeb: Settings > Secrets and variables > Actions > Secrets tab > New repository secret.\n`,
     )
   } else {
     console.log(
-      'STEP 2. Make sure the repository SECRET ALLEGRO_STATE_KEY holds the same ALLEGRO_STATE_KEY you just used.\n',
+      `STEP ${step++}. Make sure the repository SECRET ALLEGRO_STATE_KEY holds the same ALLEGRO_STATE_KEY you just used.\n`,
+    )
+  }
+
+  if (pat) {
+    // GitHub's API writes variables as plain text, so no extra tooling is needed; secrets would need sealed-box crypto.
+    const target = githubVariableStorage({ repo, name, token: pat, passphrase: stateKey })
+    await target.set('ci', saved)
+    const back = await target.get('ci')
+    if (back?.refresh_token !== saved.refresh_token)
+      throw new Error('The variable was written but does not read back correctly')
+    console.log(
+      `STEP ${step++}. Done: the repository variable ${name} was written with CI_STATE_PAT and read back successfully.\n`,
+    )
+  } else {
+    const blob = encrypt(JSON.stringify(saved), stateKey, name)
+    const file = process.env.ALLEGRO_STATE_OUT ?? 'allegro-user-tokens.txt'
+    writeFileSync(file, blob + '\n', { mode: 0o600 })
+    console.log(
+      `${bar}\nSTEP ${step++}. Create the repository VARIABLE (not a secret) ${name} with this value (also saved in ${file}):\n${bar}\n${blob}\n${bar}\nWeb: Settings > Secrets and variables > Actions > Variables tab > New repository variable.`,
+    )
+    console.log(
+      `Tip: set CI_STATE_PAT (fine-grained token, this repository, "Variables: read and write") when running this script and it writes the variable for you.\n`,
     )
   }
   console.log(
-    `${bar}\nSTEP 3. Create the repository VARIABLE (not a secret) ${name} with this value (also saved in ${file}):\n${bar}\n${blob}\n${bar}\n`,
-  )
-  console.log('Web: Settings > Secrets and variables > Actions > Variables tab > New repository variable.')
-  console.log('With the gh CLI instead, from the folder you ran this in:')
-  if (generatedKey) console.log(`  gh secret set ALLEGRO_STATE_KEY --repo ${repo} --body '${generatedKey}'`)
-  console.log(`  gh variable set ${name} --repo ${repo} < ${file}\n`)
-  console.log(
-    'STEP 4. Make sure the secrets ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET and CI_STATE_PAT exist (see docs/runbooks.md), then run the workflow "Sandbox user token" with mode=refresh to check.',
+    `STEP ${step}. Make sure the secrets ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET and CI_STATE_PAT exist (see docs/runbooks.md), then run the workflow "Sandbox user token" with mode=refresh to check.`,
   )
   console.log(
     '\nDo not use these tokens for anything else: the refresh token is single use, and the first scheduled refresh replaces it.',
   )
-  console.log(`The file ${file} is ciphertext, but delete it once the variable is set.`)
 }
 
 const mode = process.argv[2]
