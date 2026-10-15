@@ -4,6 +4,7 @@ import { AllegroRestClient, type AuthResponse, type ClientConfig } from '../src'
 
 // Opt-in: talks to the Allegro SANDBOX with a registered *device* application. Run with
 //   ALLEGRO_LIVE=1 ALLEGRO_CLIENT_ID=... ALLEGRO_CLIENT_SECRET=... npm test
+// Only the device flow is covered; see docs/runbooks.md for what to add if the web OAuth flow is ever tested.
 // In CI the values come from repository secrets (see .github/workflows/live.yml).
 // No logged-in user is needed: requesting a device code works anonymously, and exchanging it before anybody
 // approved it is answered with `authorization_pending`. Together that proves our requests (Basic auth, form or
