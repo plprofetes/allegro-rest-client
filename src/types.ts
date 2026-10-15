@@ -73,6 +73,7 @@ export interface Errors {
     details: any
     path: string
     userMessage: any
+    metadata?: Record<string, unknown>
   }[]
 }
 

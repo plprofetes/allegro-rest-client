@@ -116,6 +116,8 @@ Refresh-token race handling and multi-process coordination: storage implementati
 
 ## Implementation status
 
+Observed Allegro behaviour (headers, content negotiation, error shapes) is recorded in [allegro-conventions.md](allegro-conventions.md); the request-id header turned out to be `trace-id`.
+
 Phase 1a and 1b are implemented; maintenance procedures are in [runbooks.md](runbooks.md). Deviations from the plan above, kept deliberately small (solo-maintainer, KISS):
 
 - No `composePolicies` helper: presets compose through their `next` option.
@@ -125,4 +127,4 @@ Phase 1a and 1b are implemented; maintenance procedures are in [runbooks.md](run
 - The migration guide lives in the README ("Upgrading from 1.x") rather than a separate file.
 - `tokenParams` (`'form'` default, `'query'` as the escape hatch) was added because the form-body token requests needed verifying against the live Allegro token endpoint (done 2026-10-15: the live job passed against the sandbox for both styles). The live sandbox tests (`.github/workflows/live.yml`, repository secrets) check that Allegro accepts both styles; one real login remains the release gate described in the runbooks.
 - Live tests cover the device flow only; testing the web OAuth flow is a possible later addition (see the runbooks).
-- Open items: Allegro's terms for redistributing the spec (the README states the retrieval date and ownership), the name of Allegro's request-id response header (the hook checks `trace-id`, `x-trace-id`, `x-request-id`), the original sample credentials that remain in git history and must be rotated.
+- Open items: Allegro's terms for redistributing the spec (the README states the retrieval date and ownership), the original sample credentials that remain in git history and must be rotated.

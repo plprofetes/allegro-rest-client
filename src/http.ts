@@ -146,8 +146,8 @@ const safe = (fn: () => void) => {
   }
 }
 
-const requestIdOf = (headers: Headers) =>
-  headers.get('trace-id') ?? headers.get('x-trace-id') ?? headers.get('x-request-id') ?? undefined
+// Allegro API responses carry `trace-id` (observed on the sandbox; token endpoint responses do not have it)
+const requestIdOf = (headers: Headers) => headers.get('trace-id') ?? undefined
 
 /** Sends a request, consulting the policy after every response or failure. */
 export async function send(deps: TransportDeps, spec: SendSpec): Promise<unknown> {

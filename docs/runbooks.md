@@ -110,6 +110,8 @@ They need no logged-in user. `bindApp()` is answered anonymously, and exchanging
 
 ## Debug a failing request or login
 
+Before guessing, check [allegro-conventions.md](allegro-conventions.md): many surprises (406 on a generic `Accept`, 415 on `application/json`, `/me` returning 500 for application tokens) are documented there. To find out how Allegro behaves right now, re-run the spike described at the end of that file.
+
 Turn on visibility first:
 
 ```ts

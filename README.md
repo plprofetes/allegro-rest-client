@@ -71,7 +71,12 @@ Images and attachments are served from a different host. Choose it per request:
 await client.post('/sale/images', { host: 'upload', body: pngBytes, headers: { 'Content-Type': 'image/png' } })
 
 // binary downloads: get the native Response, read it as you like
-const res = await client.post<Response>('/shipment-management/label', { json: labelRequest, raw: true })
+// binary endpoints: set Accept to the media type the specification lists for that response
+const res = await client.post<Response>('/shipment-management/label', {
+  json: labelRequest,
+  raw: true,
+  headers: { Accept: 'application/octet-stream' },
+})
 const pdf = Buffer.from(await res.arrayBuffer())
 ```
 
@@ -94,6 +99,10 @@ const pdf = Buffer.from(await res.arrayBuffer())
 | `policy`  | Override the client's [response policy](#retries-and-error-handling) for this request |
 
 Use only one of `body`, `json`, `form`.
+
+### Things Allegro is picky about
+
+Observed on the sandbox (details and the rest in [docs/allegro-conventions.md](docs/allegro-conventions.md)): `Accept` must be Allegro's vendor type, since `application/json` and `*/*` get **406**; writes need the vendor `Content-Type` (`application/json` gets **415**, which is why `json` defaults to the vendor type); unknown query parameters are silently ignored; and every API response carries a `trace-id` header worth quoting to support (`err.headers.get('trace-id')`).
 
 ## Client options
 

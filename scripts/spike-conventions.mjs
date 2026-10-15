@@ -30,6 +30,7 @@ const redact = (text) =>
 
 async function probe(group, name, url, init = {}) {
   const started = performance.now()
+  const sentAt = Date.now()
   const rec = {
     group,
     name,
@@ -42,6 +43,7 @@ async function probe(group, name, url, init = {}) {
     const headers = {}
     for (const [k, v] of res.headers) headers[k] = SENSITIVE_HEADER.test(k) ? '<redacted>' : redact(v)
     Object.assign(rec, {
+      sentAt,
       status: res.status,
       ms: Math.round(performance.now() - started),
       headers,
@@ -232,13 +234,16 @@ for (const r of records) {
   }
 }
 const apiRecords = records.filter((r) => r.url.startsWith('<api>'))
-const dateHeader = records.find((r) => r.headers?.date)?.headers.date
+const firstDated = records.find((r) => r.headers?.date)
 console.log('SPIKE-REPORT-BEGIN')
 console.log(
   JSON.stringify(
     {
       generatedAt: new Date().toISOString(),
-      serverDateMinusLocalSeconds: dateHeader ? Math.round((Date.parse(dateHeader) - Date.now()) / 1000) : undefined,
+      // Date has 1 s resolution and the response arrives a moment after sending; read it as roughly +-2 s
+      serverDateMinusLocalSeconds: firstDated
+        ? Math.round((Date.parse(firstDated.headers.date) - firstDated.sentAt) / 1000)
+        : undefined,
       probes: records.length,
       statusCounts: records.reduce((m, r) => ((m[r.status ?? 'error'] = (m[r.status ?? 'error'] ?? 0) + 1), m), {}),
       headersSeenOnApi: Object.fromEntries(
