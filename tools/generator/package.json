@@ -1,0 +1,10 @@
+{
+  "name": "allegro-rest-client-generator",
+  "private": true,
+  "description": "Isolated install for type generation: openapi-typescript declares a TypeScript 5 peer, the library itself builds with TypeScript 6.",
+  "type": "module",
+  "dependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}
