@@ -13,6 +13,9 @@
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     },
+    "./api-types": {
+      "types": "./dist/generated/api.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -29,7 +32,7 @@
   ],
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-api-types.mjs",
     "build:test": "tsc -p tsconfig.test.json",
     "test": "npm run build:test && node --test \".build/test/*.test.js\"",
     "lint": "eslint . && prettier --check .",

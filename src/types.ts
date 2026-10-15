@@ -1,3 +1,5 @@
+import type { Call } from './typed'
+
 export type MaybePromise<T> = T | Promise<T>
 
 export interface ClientConfig {
@@ -112,6 +114,8 @@ export interface RequestOptions {
   body?: string | Uint8Array | Blob | FormData | URLSearchParams | ReadableStream
   /** Query string. Arrays become repeated keys (`a=1&a=2`); nested objects are rejected. */
   qs?: Record<string, unknown>
+  /** Templated-path style: `get('/sale/offers/{offerId}', { params: { path: { offerId }, query, header } })`. `query` is merged over `qs`, `header` over `headers`. */
+  params?: { path?: Record<string, string | number>; query?: Record<string, unknown>; header?: Record<string, unknown> }
   /** Sent as an `application/x-www-form-urlencoded` body. */
   form?: Record<string, string | number | boolean>
   /** An object/array is sent as a JSON body (content type defaults to the `Accept` media type). `true` is accepted and ignored. */
@@ -192,7 +196,7 @@ export interface ClientHooks {
   onRetry?(event: RetryHookEvent): void
 }
 
-export interface AllegroClient {
+export interface AllegroClient<Paths extends object = object> {
   /** `undefined` unless `config.type` is `'device'`. */
   bindApp: (() => Promise<DeviceResponse>) | undefined
   authorize: (codeOrDeviceCode: string) => Promise<AuthResponse>
@@ -216,9 +220,9 @@ export interface AllegroClient {
    */
   paginate: <T = any>(endpoint: string, opts?: PaginateOptions) => AsyncGenerator<T, void, undefined>
   request: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  get: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  post: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  put: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  patch: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
-  delete: <T = any>(endpoint: string, opts?: RequestOptions) => Promise<T>
+  get: Call<Paths, 'get'>
+  post: Call<Paths, 'post'>
+  put: Call<Paths, 'put'>
+  patch: Call<Paths, 'patch'>
+  delete: Call<Paths, 'delete'>
 }

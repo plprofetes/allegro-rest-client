@@ -84,6 +84,16 @@ function appendQuery(url: string, qs: Record<string, unknown> | undefined): stri
   return url + (url.includes('?') ? '&' : '?') + query
 }
 
+/** Fills `{name}` placeholders from `params.path` (URL-encoded); a placeholder left over is a caller bug. */
+function fillPath(endpoint: string, path: Record<string, string | number> | undefined): string {
+  const filled = endpoint.replace(/\{([^}/]+)\}/g, (match, name: string) =>
+    path && name in path ? encodeURIComponent(String(path[name])) : match,
+  )
+  const missing = /\{([^}/]+)\}/.exec(filled)
+  if (missing) throw bad('invalid_option', `Missing path parameter "${missing[1]}" for ${endpoint}`)
+  return filled
+}
+
 export function resolveUrl(endpoint: string, host: RequestHost | undefined, urls: Urls): string {
   if (/^https?:\/\//i.test(endpoint)) {
     // never send the bearer token to a host that is not Allegro's
@@ -119,11 +129,15 @@ export function buildRequest(
     if (key in opts) throw bad('unsupported_option', `Option "${key}" is not supported`)
   }
   const method = (opts.method ?? 'GET').toUpperCase()
-  const url = appendQuery(resolveUrl(endpoint, opts.host, urls), opts.qs)
+  const url = appendQuery(resolveUrl(fillPath(endpoint, opts.params?.path), opts.host, urls), {
+    ...opts.qs,
+    ...opts.params?.query,
+  })
 
   const headers = new Headers({ Authorization: `Bearer ${bearer}`, Accept: DEFAULT_ACCEPT })
   defaults?.forEach((value, name) => headers.set(name, value))
-  for (const [name, value] of Object.entries(opts.headers ?? {})) headers.set(name, value)
+  for (const [name, value] of Object.entries({ ...opts.params?.header, ...opts.headers }))
+    headers.set(name, String(value))
 
   const jsonBody = opts.json !== undefined && typeof opts.json !== 'boolean'
   const sources = [opts.body !== undefined, opts.form !== undefined, jsonBody].filter(Boolean).length

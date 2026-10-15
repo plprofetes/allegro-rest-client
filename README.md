@@ -238,7 +238,20 @@ Routes are `'METHOD /path'` (no host, no query); a reply is `{ status?, body?, h
 
 ## Types from the official API specification
 
-The repository carries a copy of Allegro's OpenAPI specification and types generated from it (`src/generated/api.d.ts`, not published yet; typed client calls are on the roadmap).
+The package ships types generated from Allegro's OpenAPI specification as a type-only entry point. They are opt-in, so the 1.4 MB file is only loaded by projects that import it:
+
+```ts
+import { AllegroRestClient } from 'allegro-rest-client'
+import type { paths } from 'allegro-rest-client/api-types'
+
+const client = await AllegroRestClient<paths>(config)
+const offer = await client.get('/sale/product-offers/{offerId}', { params: { path: { offerId } } }) // typed response
+const { offers } = await client.get('/sale/offers', { params: { query: { limit: 10 } } }) // typed query
+```
+
+With `paths`, only paths of the specification are accepted for the method (a typo or `post('/me')` is a compile error), path parameters are required, and `json` is typed from the request body. `params` is `{ path, query, header }`; path values are URL-encoded. Responses are typed as the 2xx bodies (the type also covers every media type of the operation). Endpoints the specification lacks: pass your own `paths`-shaped interface, or use `client.request()`, which is always untyped. Without the type argument nothing changes (`params` still works, untyped).
+
+The types are as accurate as the specification, which Allegro does not always keep in step with the API; treat them as help, not proof. Examples: undocumented fields appear as absent, and the binary endpoints still need `raw: true` and an explicit `Accept`.
 
 - **Documentation retrieved: 2026-10-15** from <https://developer.allegro.pl/swagger.yaml> (recorded in [`spec/spec.meta.json`](spec/spec.meta.json) together with a checksum).
 - The specification is owned by Allegro; the copy is kept so types can be regenerated reproducibly. A test fails if the committed types and the specification disagree, and if the specification file is missing.

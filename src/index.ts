@@ -1,6 +1,7 @@
 import { deviceRequest, expectObject, tokenRequest, type TokenEndpoint } from './auth'
 import { buildRequest, send, type SendSpec, type TransportDeps, type Urls } from './http'
 import { toClassError } from './errors'
+import type { Call } from './typed'
 import { decodeJwtPayload, getExpiresInHours } from './helpers'
 import { defaultPolicy } from './policy'
 import type {
@@ -57,7 +58,10 @@ function mergeHooks(...all: ClientHooks[]): ClientHooks {
   }
 }
 
-async function AllegroRestClient(config: ClientConfig, options: ClientOptions = {}): Promise<AllegroClient> {
+async function AllegroRestClient<Paths extends object = object>(
+  config: ClientConfig,
+  options: ClientOptions = {},
+): Promise<AllegroClient<Paths>> {
   const sandbox = options.sandbox === true
   const baseUrl = sandbox ? 'https://allegro.pl.allegrosandbox.pl' : 'https://allegro.pl'
   const urls: Urls = {
@@ -280,16 +284,17 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
     getExpiresInHours: (): string => getExpiresInHours(tokens, now()).toFixed(2),
     paginate: guardedPaginate,
     request,
-    get: withMethod('GET'),
-    post: withMethod('POST'),
-    put: withMethod('PUT'),
-    patch: withMethod('PATCH'),
-    delete: withMethod('DELETE'),
+    get: withMethod('GET') as Call<Paths, 'get'>,
+    post: withMethod('POST') as Call<Paths, 'post'>,
+    put: withMethod('PUT') as Call<Paths, 'put'>,
+    patch: withMethod('PATCH') as Call<Paths, 'patch'>,
+    delete: withMethod('DELETE') as Call<Paths, 'delete'>,
   }
 }
 
 export { AllegroRestClient }
 export { defaultPolicy, retry429Policy, transientRetryPolicy, parseRetryAfter } from './policy'
+export type { ResponseOf } from './typed'
 export type { RetryOptions, TransientRetryOptions } from './policy'
 export { AllegroApiError, isAllegroError, isTransportError } from './errors'
 export type {

@@ -16,20 +16,21 @@ Short, copy-pasteable procedures for the recurring jobs on this repo. Written fo
 
 ## Project map
 
-| Path                          | What it is                                                                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                | The `AllegroRestClient` factory: token lifecycle (store, refresh) and the `get/post/...` methods; exports                        |
-| `src/types.ts`                | Every public type, with the option documentation as doc comments                                                                 |
-| `src/http.ts`                 | Request building (`buildRequest`) and the single `send` loop (fetch, hooks, policy, retry)                                       |
-| `src/policy.ts`               | `defaultPolicy` and the opt-in presets `retry429Policy`, `transientRetryPolicy`                                                  |
-| `src/auth.ts`                 | Builds the OAuth token / device requests                                                                                         |
-| `src/testing.ts`              | Published subpath `allegro-rest-client/testing`: `mockAllegro` fake fetch for consumers' tests                                   |
-| `src/errors.ts`, `helpers.ts` | Error shapes and guards; JWT decode and `getExpiresInHours`                                                                      |
-| `src/generated/api.d.ts`      | **Generated** from the spec. Never edit by hand                                                                                  |
-| `spec/`                       | Committed copy of Allegro's OpenAPI spec (`swagger.yaml`) plus `spec.meta.json` (source, retrieval date, sha256)                 |
-| `tools/generator/`            | Isolated install (openapi-typescript + TypeScript 5) and `generate.mjs`; kept apart because the library builds with TypeScript 6 |
-| `scripts/spec-update.mjs`     | Downloads the latest spec                                                                                                        |
-| `test/`                       | Offline tests with a mock `fetch` (`helpers.ts`), plus opt-in live tests                                                         |
+| Path                          | What it is                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/index.ts`                | The `AllegroRestClient` factory: token lifecycle (store, refresh) and the `get/post/...` methods; exports                            |
+| `src/types.ts`                | Every public type, with the option documentation as doc comments                                                                     |
+| `src/http.ts`                 | Request building (`buildRequest`) and the single `send` loop (fetch, hooks, policy, retry)                                           |
+| `src/policy.ts`               | `defaultPolicy` and the opt-in presets `retry429Policy`, `transientRetryPolicy`                                                      |
+| `src/auth.ts`                 | Builds the OAuth token / device requests                                                                                             |
+| `src/testing.ts`              | Published subpath `allegro-rest-client/testing`: `mockAllegro` fake fetch for consumers' tests                                       |
+| `src/errors.ts`, `helpers.ts` | Error shapes and guards; JWT decode and `getExpiresInHours`                                                                          |
+| `src/typed.ts`                | Compile-time types behind `AllegroRestClient<paths>` (templated calls, typed params and responses)                                   |
+| `src/generated/api.d.ts`      | **Generated** from the spec. Never edit by hand. Shipped as `allegro-rest-client/api-types` (copied by `scripts/copy-api-types.mjs`) |
+| `spec/`                       | Committed copy of Allegro's OpenAPI spec (`swagger.yaml`) plus `spec.meta.json` (source, retrieval date, sha256)                     |
+| `tools/generator/`            | Isolated install (openapi-typescript + TypeScript 5) and `generate.mjs`; kept apart because the library builds with TypeScript 6     |
+| `scripts/spec-update.mjs`     | Downloads the latest spec                                                                                                            |
+| `test/`                       | Offline tests with a mock `fetch` (`helpers.ts`), plus opt-in live tests                                                             |
 
 Application-level concerns (locking across processes, re-authorization, alerting) belong in a consumer's wrapper, not here: see [wrapping.md](wrapping.md).
 
