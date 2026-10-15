@@ -1,0 +1,7 @@
+dist
+.build
+node_modules
+src/generated
+spec
+tools/generator/node_modules
+package-lock.json

@@ -1,231 +1,189 @@
-import * as jwt from 'jsonwebtoken'
-import request from 'request'
-import { getExpiresInHours } from './helpers'
-import { AuthResponse, ClientConfig, ClientOptions, DeviceResponse, Error, Errors } from './types'
+import { deviceRequest, expectObject, tokenRequest, type TokenEndpoint } from './auth'
+import { buildRequest, send, type SendSpec, type TransportDeps, type Urls } from './http'
+import { decodeJwtPayload, getExpiresInHours } from './helpers'
+import { defaultPolicy } from './policy'
+import type {
+  AllegroClient,
+  AuthResponse,
+  ClientConfig,
+  ClientHooks,
+  ClientOptions,
+  DeviceResponse,
+  RequestOptions,
+  TokenStorage,
+} from './types'
 
-async function AllegroRestClient(config: ClientConfig, options: ClientOptions) {
-  let baseUrl = 'https://allegro.pl'
-  let apiUrl = 'https://api.allegro.pl'
-  if (options && options.sandbox === true) {
-    baseUrl = 'https://allegro.pl.allegrosandbox.pl'
-    apiUrl = 'https://api.allegro.pl.allegrosandbox.pl'
+const sleepDefault = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+function memoryStorage(): TokenStorage {
+  const store = new Map<string, AuthResponse>()
+  return {
+    get: (account) => store.get(account),
+    set: (account, tokens) => {
+      store.set(account, tokens)
+    },
   }
-  const oauthUser: string = Buffer.from(`${config.client_id}:${config.client_secret}`).toString('base64')
-  const account: string = (options && options.account) || 'default'
-  const isLogging: boolean = options && options.logger === true
-  const store: any = {}
-  const storage = options.storage
-    ? options.storage
-    : {
-        set(tokens: AuthResponse): void {
-          store[account] = tokens
-        },
-        get(): AuthResponse {
-          return store[account]
-        },
-      }
-  let tokens: AuthResponse = (await storage.get(account)) || null
+}
+
+function consoleHooks(prefix: string): ClientHooks {
+  return {
+    onRequest: (e) => console.debug(`${prefix}, request: ${e.method} ${e.url} (attempt ${e.attempt})`),
+    onRetry: (e) => console.warn(`${prefix}, retrying ${e.method} ${e.url} in ${e.delayMs}ms`),
+  }
+}
+
+function mergeHooks(...all: ClientHooks[]): ClientHooks {
+  return {
+    onRequest: (e) => all.forEach((h) => h.onRequest?.(e)),
+    onResponse: (e) => all.forEach((h) => h.onResponse?.(e)),
+    onError: (e) => all.forEach((h) => h.onError?.(e)),
+    onRetry: (e) => all.forEach((h) => h.onRetry?.(e)),
+  }
+}
+
+async function AllegroRestClient(config: ClientConfig, options: ClientOptions = {}): Promise<AllegroClient> {
+  const sandbox = options.sandbox === true
+  const baseUrl = sandbox ? 'https://allegro.pl.allegrosandbox.pl' : 'https://allegro.pl'
+  const urls: Urls = {
+    api: sandbox ? 'https://api.allegro.pl.allegrosandbox.pl' : 'https://api.allegro.pl',
+    upload: sandbox ? 'https://upload.allegro.pl.allegrosandbox.pl' : 'https://upload.allegro.pl',
+  }
+  const oauthUser = Buffer.from(`${config.client_id}:${config.client_secret}`).toString('base64')
+  const account = options.account || 'default'
+  const isLogging = options.logger === true
+  const now = options.now ?? Date.now
+  const refreshThresholdHours = options.refreshThresholdHours ?? 1
+  const policy = options.policy ?? defaultPolicy
+  const storage = options.storage ?? memoryStorage()
+  const prefix = `app_name: ${config.app_name}, account: ${account}`
+  const log = (message: string) => {
+    if (isLogging) console.info(`${prefix}, ${message}`)
+  }
+  const deps: TransportDeps = {
+    fetch: options.fetch,
+    hooks: mergeHooks(options.hooks ?? {}, isLogging ? consoleHooks(prefix) : {}),
+    sleep: options.sleep ?? sleepDefault,
+    now,
+  }
+  const endpoint: TokenEndpoint = { baseUrl, oauthUser, style: options.tokenParams ?? 'form' }
+
+  let tokens: AuthResponse | null = (await storage.get(account)) || null
 
   const storeTokens = async (authTokens: AuthResponse): Promise<void> => {
     await storage.set(account, authTokens)
     tokens = authTokens
   }
 
-  const getSellerId = () => {
-    if (tokens && tokens.access_token) {
-      const decoded: any = jwt.decode(tokens.access_token)
-      return (decoded && decoded.user_name) || null
-    }
-    return null
+  const tokenCall = async (spec: Omit<SendSpec, 'policy' | 'kind'>): Promise<unknown> =>
+    send(deps, { ...spec, kind: 'token', policy })
+
+  const obtainTokens = async (params: Record<string, string | undefined>): Promise<AuthResponse> => {
+    const response = expectObject<AuthResponse>(await tokenCall(tokenRequest(endpoint, params)), 'access_token')
+    const authTokens: AuthResponse = { ...response, created_at: Math.ceil(now() / 1000) }
+    await storeTokens(authTokens)
+    return authTokens
   }
 
-  const refresh = async (): Promise<AuthResponse | Error> => {
+  const getSellerId = (): string | null => {
+    const decoded = tokens?.access_token ? decodeJwtPayload(tokens.access_token) : null
+    return (decoded && decoded.user_name) || null
+  }
+
+  const refresh = async (): Promise<AuthResponse> => {
     if (!tokens || !tokens.refresh_token) {
-      return Promise.reject({
+      throw {
         error: 'missing_refresh_token',
         error_description: 'Refresh token is missing or not stored in the app.',
-      })
-    }
-    if (isLogging) {
-      console.info(`app_name: ${config.app_name}, account: ${account}, refreshing tokens...`)
-    }
-    return await new Promise((resolve, reject) => {
-      const refreshOptions = {
-        method: 'POST',
-        uri:
-          `${baseUrl}/auth/oauth/token?` +
-          `grant_type=refresh_token&` +
-          `refresh_token=${tokens.refresh_token}&` +
-          `redirect_uri=${config.url_redirect}`,
-        headers: {
-          Authorization: `Basic ${oauthUser}`,
-        },
       }
-      return request(
-        refreshOptions,
-        async (err: any, response: any, body: any): Promise<void> => {
-          const refreshedTokens = body && JSON.parse(body)
-          if (err) {
-            return reject({
-              error: 'request_err',
-              error_description: err,
-            })
-          } else if (refreshedTokens.error) return reject(refreshedTokens)
-          refreshedTokens.created_at = Math.ceil(Date.now() / 1000)
-          await storeTokens(refreshedTokens)
-          return resolve(refreshedTokens)
-        },
-      )
+    }
+    log('refreshing tokens...')
+    return obtainTokens({
+      grant_type: 'refresh_token',
+      refresh_token: tokens.refresh_token,
+      redirect_uri: config.url_redirect,
     })
   }
 
-  const bindApp = async (): Promise<DeviceResponse | Error> => {
-    if (isLogging) {
-      console.info(`app_name: ${config.app_name}, account: ${account}, binding app...`)
-    }
-    return new Promise((resolve, reject) => {
-      const authorizeOptions = {
-        method: 'POST',
-        uri: `${baseUrl}/auth/oauth/device`,
-        headers: {
-          Authorization: `Basic ${oauthUser}`,
-          'Content-Type': `application/x-www-form-urlencoded`,
-        },
-        form: {
-          client_id: config.client_id,
-        },
-      }
-      request(authorizeOptions, async (err: any, response: any, body: any) => {
-        const deviceOptions = body && JSON.parse(body)
-        if (err) {
-          return reject({
-            error: 'request_err',
-            error_description: err,
-          })
-        } else if (deviceOptions.error) return reject(deviceOptions)
-        return resolve(deviceOptions)
-      })
+  const bindApp = async (): Promise<DeviceResponse> => {
+    log('binding app...')
+    return expectObject<DeviceResponse>(await tokenCall(deviceRequest(endpoint, config.client_id)), 'device_code')
+  }
+
+  const authorizeDevice = async (device_code: string): Promise<AuthResponse> => {
+    log('authorizing device...')
+    return obtainTokens({
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      device_code,
     })
   }
 
-  const authorizeDevice = async (device_code: string): Promise<AuthResponse | Error> => {
-    if (isLogging) {
-      console.info(`app_name: ${config.app_name}, account: ${account}, authorizing device...`)
-    }
-    return new Promise((resolve, reject) => {
-      const authorizeOptions = {
-        method: 'POST',
-        uri:
-          `${baseUrl}/auth/oauth/token?` +
-          `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&` +
-          `device_code=${device_code}`,
-        headers: {
-          Authorization: `Basic ${oauthUser}`,
-        },
-      }
-      request(authorizeOptions, async (err: any, response: any, body: any) => {
-        const authorizedTokens = body && JSON.parse(body)
-        if (err) {
-          return reject({
-            error: 'request_err',
-            error_description: err,
-          })
-        } else if (authorizedTokens.error) {
-          return reject(authorizedTokens)
-        }
-        authorizedTokens.created_at = Math.ceil(Date.now() / 1000)
-        await storeTokens(authorizedTokens)
-        return resolve(authorizedTokens)
-      })
+  const authorizeWeb = async (code: string): Promise<AuthResponse> => {
+    log('authorizing web...')
+    return obtainTokens({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: config.url_redirect,
     })
   }
 
-  const authorizeWeb = async (code: string): Promise<AuthResponse | Error> => {
-    if (isLogging) {
-      console.info(`app_name: ${config.app_name}, account: ${account}, authorizing web...`)
-    }
-    return new Promise((resolve, reject) => {
-      const authorizeOptions = {
-        method: 'POST',
-        uri:
-          `${baseUrl}/auth/oauth/token?` +
-          `grant_type=authorization_code&` +
-          `code=${code}&` +
-          `redirect_uri=${config.url_redirect}`,
-        headers: {
-          Authorization: `Basic ${oauthUser}`,
-        },
-      }
-      request(authorizeOptions, async (err: any, response: any, body: any) => {
-        const authorizedTokens = body && JSON.parse(body)
-        if (err) {
-          return reject({
-            error: 'request_err',
-            error_description: err,
-          })
-        } else if (authorizedTokens.error) {
-          return reject(authorizedTokens)
-        }
-        authorizedTokens.created_at = Math.ceil(Date.now() / 1000)
-        await storeTokens(authorizedTokens)
-        return resolve(authorizedTokens)
-      })
-    })
-  }
-
-  const makeRequest = async (endpoint: string, opts: any = {}): Promise<any | Error | Errors> => {
-    if (isLogging) {
-      console.debug(`tokens expire in ${getExpiresInHours(tokens).toFixed(2)} hours`)
-    }
-    if (tokens && tokens.refresh_token && getExpiresInHours(tokens) < 1) {
+  const makeRequest = async <T = any>(endpointPath: string, opts: RequestOptions = {}): Promise<T> => {
+    if (isLogging) console.debug(`tokens expire in ${getExpiresInHours(tokens, now()).toFixed(2)} hours`)
+    if (
+      tokens &&
+      tokens.refresh_token &&
+      refreshThresholdHours > 0 &&
+      getExpiresInHours(tokens, now()) < refreshThresholdHours
+    ) {
       await refresh()
     }
     if (!tokens || !tokens.access_token) {
-      return Promise.reject({
+      throw {
         error: 'missing_access_token',
         error_description: 'Access token is missing or not stored in the app.',
-      })
+      }
     }
-    if (isLogging) {
-      console.debug(`app_name: ${config.app_name}, account: ${account}, request: ${endpoint}`)
-    }
-    const requestOptions = {
-      uri: `${apiUrl}${endpoint}`,
-      method: 'GET',
-      ...opts,
-      headers: {
-        Authorization: `Bearer ${tokens.access_token}`,
-        Accept: 'application/vnd.allegro.public.v1+json',
-        ...opts.headers,
-      },
-    }
-
-    return new Promise((resolve, reject) => {
-      request(requestOptions, (err: any, response: any, body: any) => {
-        body = body && JSON.parse(body)
-        if (err) {
-          return reject({
-            error: 'request_err',
-            error_description: err,
-          })
-        } else if (body.error || body.errors) return reject(body)
-        return resolve(body)
-      })
-    })
+    const built = buildRequest(endpointPath, opts, urls, tokens.access_token)
+    return (await send(deps, { ...built, kind: 'api', policy: built.policy ?? policy })) as T
   }
+
+  const withMethod =
+    (method: string) =>
+    <T = any>(path: string, opts?: RequestOptions) =>
+      makeRequest<T>(path, { ...opts, method })
 
   return {
     bindApp: config.type === 'device' ? bindApp : undefined,
     authorize: config.type === 'device' ? authorizeDevice : authorizeWeb,
     getAccount: (): string => account,
-    getSellerId: (): string | null => getSellerId(),
-    getExpiresInHours: (): string => getExpiresInHours(tokens).toFixed(2),
+    getSellerId,
+    getExpiresInHours: (): string => getExpiresInHours(tokens, now()).toFixed(2),
     request: makeRequest,
-    get: (endpoint: string, opts?: any) => makeRequest(endpoint, { ...opts, method: 'GET' }),
-    post: (endpoint: string, opts?: any) => makeRequest(endpoint, { ...opts, method: 'POST' }),
-    put: (endpoint: string, opts?: any) => makeRequest(endpoint, { ...opts, method: 'PUT' }),
-    delete: (endpoint: string, opts?: any) => makeRequest(endpoint, { ...opts, method: 'DELETE' }),
+    get: withMethod('GET'),
+    post: withMethod('POST'),
+    put: withMethod('PUT'),
+    patch: withMethod('PATCH'),
+    delete: withMethod('DELETE'),
   }
 }
 
-export { AllegroRestClient, ClientConfig, ClientOptions, DeviceResponse, AuthResponse, Error, Errors }
+export { AllegroRestClient }
+export { defaultPolicy, retry429Policy, transientRetryPolicy, parseRetryAfter } from './policy'
+export type { RetryOptions, TransientRetryOptions } from './policy'
+export { isAllegroError, isTransportError } from './errors'
+export type {
+  AllegroClient,
+  AuthResponse,
+  ClientConfig,
+  ClientHooks,
+  ClientOptions,
+  DeviceResponse,
+  Error,
+  Errors,
+  OAuthError,
+  PolicyContext,
+  PolicyDecision,
+  RequestInfo,
+  RequestOptions,
+  ResponsePolicy,
+  TokenStorage,
+} from './types'
