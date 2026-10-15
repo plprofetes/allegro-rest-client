@@ -15,7 +15,7 @@ jobs:
       ALLEGRO_LIVE: '1'
       ALLEGRO_CLIENT_ID: ${{ secrets.ALLEGRO_CLIENT_ID }}
       ALLEGRO_CLIENT_SECRET: ${{ secrets.ALLEGRO_CLIENT_SECRET }}
-    container: node:24
+    container: node:22
     steps:
       - name: Check out
         env:

@@ -7,10 +7,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [22, 24]
-    container: node:${{ matrix.node }}
+    container: node:22 # the supported baseline (package.json engines)
     steps:
       - name: Check out
         env:

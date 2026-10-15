@@ -181,7 +181,7 @@ npm outdated --prefix tools/generator
 Constraints that bite:
 
 - **TypeScript**: the library builds with 6.x (`typescript-eslint` caps below 6.1, so TypeScript 7 waits for it). `tools/generator` pins TypeScript 5 and `openapi-typescript` exactly, because the generator declares a TypeScript 5 peer; bumping either means `npm run generate`, then reviewing the diff of `src/generated/api.d.ts`.
-- **Node floor** (22): lives in `package.json` `engines`, the CI matrix (`.github/workflows/ci.yml`), `@types/node` (keep its major equal to the floor), README. Raising it is a breaking change.
+- **Node floor** (22): lives in `package.json` `engines`, the CI container image (`node:22` in both workflows), `@types/node` (keep its major equal to the floor), README. Raising it is a breaking change.
 - **ESLint / typescript-eslint**: config is `eslint.config.mjs` (flat). Check peer ranges before bumping a major.
 
 After any bump: `npm run lint && npm test && npm run build`.

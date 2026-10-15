@@ -120,7 +120,7 @@ Phase 1a and 1b are implemented; maintenance procedures are in [runbooks.md](run
 
 - No `composePolicies` helper: presets compose through their `next` option.
 - The CJS `node16` and TypeScript 5 consumer-fixture CI job was dropped; the test build itself is a `module: node16` CommonJS consumer of the sources. Revisit if consumers report typing problems.
-- CI is a single workflow (lint, tests, build) on Node 22 and 24, not 26.
+- CI is a single workflow (lint, tests, build) on Node 22 only, the baseline; add 24/26 to a matrix when it matters.
 - Hooks, `raw`, `host: 'upload'`, `signal`/`timeout`, injectable `fetch` and per-request `policy` landed together with the transport instead of as a separate step; the console `logger` is implemented on the same hooks.
 - The migration guide lives in the README ("Upgrading from 1.x") rather than a separate file.
 - `tokenParams` (`'form'` default, `'query'` as the escape hatch) was added because the form-body token requests are **not yet verified against the live Allegro token endpoint**. The live sandbox tests (`.github/workflows/live.yml`, repository secrets) check that Allegro accepts both styles; one real login remains the release gate described in the runbooks.
