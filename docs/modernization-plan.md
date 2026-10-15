@@ -83,10 +83,10 @@ Added on top of 1a; each item is small because 1a laid the transport, error, hoo
 
 Likely to be done, so ordered by value:
 
-1. **Quick wins:** `defaultHeaders` / `userAgent` option (applied to API and token calls); pino-style `Logger` object in addition to hooks; storage adapter recipes (file, SQL, Redis) including a locking example.
+1. **Quick wins** (`defaultHeaders` / `userAgent` done): pino-style `Logger` object in addition to hooks; storage adapter recipes (file, SQL, Redis) including a locking example.
 2. **Typed API.** Opt-in paths type: `AllegroRestClient<AllegroPaths>`; untyped by default so nobody loads the 1.4 MB generated file by accident. Templated calls (`get('/sale/offers/{offerId}', { params: { path, query } })`) or `operationId` calls; no loose string overloads that accept typos. Bring-your-own paths type for APIs the public spec does not cover. Generated operation -> `Accept` media type map. Generated types ship as a type-only subpath.
 3. **Errors.** Opt-in `errorMode: 'class'` returning `AllegroApiError` (status, headers, `errors[]`, request id, stack); considered as the default in a later major.
-4. **Auth.** `client_credentials` flow; authorization-URL builder for the web flow; device-flow poller (`authorization_pending` / `slow_down`) with injectable persistence and sleep.
+4. **Auth.** (`client_credentials` done as `authorizeApp()`) authorization-URL builder for the web flow; device-flow poller (`authorization_pending` / `slow_down`) with injectable persistence and sleep.
 5. **Pagination** async iterators (44 paginated operations).
 6. **Testing helpers.** Mock `fetch` / recorded-fixture helper for consumers.
 7. **Docs.** Quickstart per auth flow; recipes (upload an image, download a label, paginate offers, handle 429, multiple accounts via a shared-config factory); typedoc reference.
@@ -130,3 +130,4 @@ Phase 1a and 1b are implemented; maintenance procedures are in [runbooks.md](run
 - `tokenParams` (`'form'` default, `'query'` as the escape hatch) was added because the form-body token requests needed verifying against the live Allegro token endpoint (done 2026-10-15: the live job passed against the sandbox for both styles). The live sandbox tests (`.github/workflows/live.yml`, repository secrets) check that Allegro accepts both styles; one real login remains the release gate described in the runbooks.
 - Live tests cover the device flow only; testing the web OAuth flow is a possible later addition (see the runbooks).
 - Open items: Allegro's terms for redistributing the spec (the README states the retrieval date and ownership), CI should use the maintainer's own sandbox application (repository secrets), not the sample credentials that remain in upstream history.
+- Phase 2 progress: `defaultHeaders`/`userAgent` and `client_credentials` (`authorizeApp()`, marks stored tokens with `grant: 'client_credentials'` so they are re-requested, not refreshed) are implemented. Not yet live-tested for `authorizeApp`; the spike (finding 9) showed the grant works for a device application.

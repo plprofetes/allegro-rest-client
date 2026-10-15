@@ -195,3 +195,21 @@ test('a single options object does not leak between clients (default storage is 
   const b = await AllegroRestClient(config)
   assert.equal(a.getExpiresInHours(), b.getExpiresInHours())
 })
+
+test('defaultHeaders and userAgent reach API calls; per-request headers win', async () => {
+  const stored = tokens()
+  const { fetch, calls } = mockFetch(() => json({}))
+  const client = await AllegroRestClient(config, {
+    fetch,
+    storage: memoryStorage(stored).storage,
+    userAgent: 'my-app/1',
+    defaultHeaders: { 'X-Team': 'a', Accept: 'application/vnd.allegro.beta.v1+json' },
+  })
+  await client.get('/x')
+  await client.get('/x', { headers: { 'x-team': 'b' } })
+  assert.equal(calls[0].headers.get('user-agent'), 'my-app/1')
+  assert.equal(calls[0].headers.get('x-team'), 'a')
+  assert.equal(calls[0].headers.get('accept'), 'application/vnd.allegro.beta.v1+json')
+  assert.equal(calls[0].headers.get('authorization'), `Bearer ${stored.access_token}`)
+  assert.equal(calls[1].headers.get('x-team'), 'b')
+})

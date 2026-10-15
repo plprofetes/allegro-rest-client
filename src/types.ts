@@ -27,6 +27,10 @@ export interface ClientOptions {
   refreshThresholdHours?: number
   /** Where token endpoint parameters are sent. Default `form`. */
   tokenParams?: TokenParamsStyle
+  /** Sent on every API and token request. Per-request `headers` win; the transport's own headers (Authorization, token content type) win on token calls. */
+  defaultHeaders?: Record<string, string>
+  /** Shorthand for a `User-Agent` default header (`defaultHeaders['user-agent']` wins if both are set). */
+  userAgent?: string
   /** Lifecycle callbacks (logging, metrics, tracing). */
   hooks?: ClientHooks
   /** Injectable for tests. */
@@ -57,6 +61,8 @@ export interface AuthResponse {
   expires_in: number
   scope: string
   jti: string
+  /** Set to `client_credentials` on application tokens, which have no refresh token and are re-requested instead of refreshed. */
+  grant?: 'client_credentials'
 }
 
 /** OAuth / transport error. Kept under its 1.x name; it shadows the global `Error` only when imported by that name. */
@@ -170,6 +176,8 @@ export interface AllegroClient {
   /** `undefined` unless `config.type` is `'device'`. */
   bindApp: (() => Promise<DeviceResponse>) | undefined
   authorize: (codeOrDeviceCode: string) => Promise<AuthResponse>
+  /** `client_credentials` grant: an application token without a user (reference data only; ~12 h, re-requested automatically). */
+  authorizeApp: () => Promise<AuthResponse>
   getAccount: () => string
   getSellerId: () => string | null
   /** Hours until the access token expires, as a string with 2 decimals. */

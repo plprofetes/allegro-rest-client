@@ -67,6 +67,10 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
   }
   const endpoint: TokenEndpoint = { baseUrl, oauthUser, style: options.tokenParams ?? 'form' }
 
+  const defaults = new Headers()
+  if (options.userAgent) defaults.set('user-agent', options.userAgent)
+  for (const [name, value] of Object.entries(options.defaultHeaders ?? {})) defaults.set(name, value)
+
   let tokens: AuthResponse | null = (await storage.get(account)) || null
 
   const storeTokens = async (authTokens: AuthResponse): Promise<void> => {
@@ -74,12 +78,18 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
     tokens = authTokens
   }
 
-  const tokenCall = async (spec: Omit<SendSpec, 'policy' | 'kind'>): Promise<unknown> =>
-    send(deps, { ...spec, kind: 'token', policy })
+  const tokenCall = async (spec: Omit<SendSpec, 'policy' | 'kind'>): Promise<unknown> => {
+    const headers = new Headers(defaults)
+    spec.headers.forEach((value, name) => headers.set(name, value))
+    return send(deps, { ...spec, headers, kind: 'token', policy })
+  }
 
-  const obtainTokens = async (params: Record<string, string | undefined>): Promise<AuthResponse> => {
+  const obtainTokens = async (
+    params: Record<string, string | undefined>,
+    extra: Partial<AuthResponse> = {},
+  ): Promise<AuthResponse> => {
     const response = expectObject<AuthResponse>(await tokenCall(tokenRequest(endpoint, params)), 'access_token')
-    const authTokens: AuthResponse = { ...response, created_at: Math.ceil(now() / 1000) }
+    const authTokens: AuthResponse = { ...response, created_at: Math.ceil(now() / 1000), ...extra }
     await storeTokens(authTokens)
     return authTokens
   }
@@ -87,6 +97,11 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
   const getSellerId = (): string | null => {
     const decoded = tokens?.access_token ? decodeJwtPayload(tokens.access_token) : null
     return (decoded && decoded.user_name) || null
+  }
+
+  const authorizeApp = async (): Promise<AuthResponse> => {
+    log('requesting application token...')
+    return obtainTokens({ grant_type: 'client_credentials' }, { grant: 'client_credentials' })
   }
 
   const refresh = async (): Promise<AuthResponse> => {
@@ -128,13 +143,9 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
 
   const makeRequest = async <T = any>(endpointPath: string, opts: RequestOptions = {}): Promise<T> => {
     if (isLogging) console.debug(`tokens expire in ${getExpiresInHours(tokens, now()).toFixed(2)} hours`)
-    if (
-      tokens &&
-      tokens.refresh_token &&
-      refreshThresholdHours > 0 &&
-      getExpiresInHours(tokens, now()) < refreshThresholdHours
-    ) {
-      await refresh()
+    if (tokens && refreshThresholdHours > 0 && getExpiresInHours(tokens, now()) < refreshThresholdHours) {
+      if (tokens.grant === 'client_credentials') await authorizeApp()
+      else if (tokens.refresh_token) await refresh()
     }
     if (!tokens || !tokens.access_token) {
       throw {
@@ -142,7 +153,7 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
         error_description: 'Access token is missing or not stored in the app.',
       }
     }
-    const built = buildRequest(endpointPath, opts, urls, tokens.access_token)
+    const built = buildRequest(endpointPath, opts, urls, tokens.access_token, defaults)
     return (await send(deps, { ...built, kind: 'api', policy: built.policy ?? policy })) as T
   }
 
@@ -153,6 +164,7 @@ async function AllegroRestClient(config: ClientConfig, options: ClientOptions = 
 
   return {
     bindApp: config.type === 'device' ? bindApp : undefined,
+    authorizeApp,
     authorize: config.type === 'device' ? authorizeDevice : authorizeWeb,
     getAccount: (): string => account,
     getSellerId,

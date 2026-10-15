@@ -108,7 +108,13 @@ export interface BuiltRequest {
 }
 
 /** Turns an endpoint plus `request`-style options into a fetch-ready request. */
-export function buildRequest(endpoint: string, opts: RequestOptions, urls: Urls, bearer: string): BuiltRequest {
+export function buildRequest(
+  endpoint: string,
+  opts: RequestOptions,
+  urls: Urls,
+  bearer: string,
+  defaults?: Headers,
+): BuiltRequest {
   for (const key of UNSUPPORTED) {
     if (key in opts) throw bad('unsupported_option', `Option "${key}" is not supported`)
   }
@@ -116,6 +122,7 @@ export function buildRequest(endpoint: string, opts: RequestOptions, urls: Urls,
   const url = appendQuery(resolveUrl(endpoint, opts.host, urls), opts.qs)
 
   const headers = new Headers({ Authorization: `Bearer ${bearer}`, Accept: DEFAULT_ACCEPT })
+  defaults?.forEach((value, name) => headers.set(name, value))
   for (const [name, value] of Object.entries(opts.headers ?? {})) headers.set(name, value)
 
   const jsonBody = opts.json !== undefined && typeof opts.json !== 'boolean'

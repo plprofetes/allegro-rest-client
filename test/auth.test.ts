@@ -166,3 +166,37 @@ test('token and policy requests flow through hooks without credentials', async (
   assert.ok(!JSON.stringify(events).includes('secret-code'))
   assert.ok(!JSON.stringify(events).includes('client-secret'))
 })
+
+test('token calls carry defaultHeaders but cannot lose Authorization to them', async () => {
+  const { fetch, calls } = mockFetch(() => json(newTokens))
+  const client = await AllegroRestClient(config, {
+    fetch,
+    userAgent: 'my-app/1',
+    defaultHeaders: { authorization: 'Bearer nope', 'content-type': 'text/plain', 'x-team': 'a' },
+  })
+  await client.authorize('dc')
+  assert.equal(calls[0].headers.get('user-agent'), 'my-app/1')
+  assert.equal(calls[0].headers.get('x-team'), 'a')
+  assert.equal(calls[0].headers.get('authorization'), basic)
+  assert.equal(calls[0].headers.get('content-type'), 'application/x-www-form-urlencoded')
+})
+
+test('authorizeApp uses client_credentials, stores the token, and re-requests it instead of refreshing', async () => {
+  let t = 1_700_000_000_000
+  const appToken = { ...newTokens, refresh_token: undefined, expires_in: 43198 }
+  const { fetch, calls } = mockFetch((req) => (req.url.includes('/auth/oauth/token') ? json(appToken) : json({})))
+  const { storage, current } = memoryStorage()
+  const client = await AllegroRestClient(config, { storage, fetch, now: () => t })
+  await client.authorizeApp()
+  assert.equal(calls[0].body, 'grant_type=client_credentials')
+  assert.equal(calls[0].headers.get('authorization'), basic)
+  assert.equal(current()?.grant, 'client_credentials')
+  await client.get('/sale/categories')
+  assert.equal(calls.length, 2)
+  t += 12 * 3600 * 1000
+  await client.get('/sale/categories')
+  assert.deepEqual(
+    calls.map((c) => c.url.includes('/token')),
+    [true, false, true, false],
+  )
+})

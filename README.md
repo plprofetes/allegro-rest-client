@@ -47,6 +47,8 @@ const { categories } = await client.get('/sale/categories')
 
 For a **web** app, send the user to `https://allegro.pl/auth/oauth/authorize?response_type=code&client_id=...&redirect_uri=...` (sandbox: `allegro.pl.allegrosandbox.pl`), then call `client.authorize(code)` with the `code` Allegro appends to your redirect URL. `bindApp` is `undefined` for web apps.
 
+For **reference data without a user** (categories, delivery methods, carriers; about 12 operations), call `await client.authorizeApp()` (`client_credentials`). The application token lasts about 12 hours and is requested again automatically when it runs low. It replaces whatever tokens the `account` holds, so give it its own `account` if the same storage also holds a user's tokens.
+
 ## Making requests
 
 ```ts
@@ -123,6 +125,8 @@ AllegroRestClient(config, options?)
 | `fetch`                 | global `fetch`    | Your own `fetch` (proxy, keep-alive agent, test double)                                |
 | `refreshThresholdHours` | `1`               | Refresh when fewer hours remain. `0` turns built-in refresh off (you refresh yourself) |
 | `tokenParams`           | `'form'`          | `'query'` sends OAuth parameters in the URL like 1.x did                               |
+| `defaultHeaders`        | none              | Headers sent on every API and token request (per-request `headers` win)                |
+| `userAgent`             | none              | Shorthand for a default `User-Agent` header                                            |
 | `sleep`, `now`          | real timers/clock | Injectable for tests                                                                   |
 
 ## Token storage
