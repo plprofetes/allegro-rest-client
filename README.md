@@ -218,6 +218,24 @@ hooks: {
 }
 ```
 
+## Testing your code
+
+`allegro-rest-client/testing` gives you a fake Allegro without network access or credentials:
+
+```ts
+import { mockAllegro } from 'allegro-rest-client/testing'
+
+const mock = mockAllegro({
+  'GET /sale/offers': { body: { offers: [{ id: '1' }], count: 1 } },
+  'POST /sale/product-offers': (req) => ({ status: 201, body: { received: req.body } }),
+})
+const client = await mock.client() // already authorized; pass client options as the first argument
+// ... run your code with `client`, then:
+mock.calls // every request: method, path, query, headers, body
+```
+
+Routes are `'METHOD /path'` (no host, no query); a reply is `{ status?, body?, headers? }` or a function returning one. Any other request answers 404 with `MOCK_ROUTE_MISSING`, so a missing route fails loudly. Use `mock.fetch` if you build the client yourself.
+
 ## Types from the official API specification
 
 The repository carries a copy of Allegro's OpenAPI specification and types generated from it (`src/generated/api.d.ts`, not published yet; typed client calls are on the roadmap).

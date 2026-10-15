@@ -23,6 +23,7 @@ Short, copy-pasteable procedures for the recurring jobs on this repo. Written fo
 | `src/http.ts`                 | Request building (`buildRequest`) and the single `send` loop (fetch, hooks, policy, retry)                                       |
 | `src/policy.ts`               | `defaultPolicy` and the opt-in presets `retry429Policy`, `transientRetryPolicy`                                                  |
 | `src/auth.ts`                 | Builds the OAuth token / device requests                                                                                         |
+| `src/testing.ts`              | Published subpath `allegro-rest-client/testing`: `mockAllegro` fake fetch for consumers' tests                                   |
 | `src/errors.ts`, `helpers.ts` | Error shapes and guards; JWT decode and `getExpiresInHours`                                                                      |
 | `src/generated/api.d.ts`      | **Generated** from the spec. Never edit by hand                                                                                  |
 | `spec/`                       | Committed copy of Allegro's OpenAPI spec (`swagger.yaml`) plus `spec.meta.json` (source, retrieval date, sha256)                 |
