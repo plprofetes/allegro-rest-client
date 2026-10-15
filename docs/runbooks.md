@@ -110,6 +110,26 @@ They need no logged-in user (see [allegro-conventions.md](allegro-conventions.md
 2. Then `await client.get('/me')` and a token refresh (`refreshThresholdHours: 13` makes the next request refresh).
 3. If the token endpoint rejects the form body, construct the client with `tokenParams: 'query'` and decide whether to change the default.
 
+## Unattended user-token CI
+
+`.github/workflows/user-token.yml` keeps a sandbox **user** token alive and runs read-only tests with it (`test/live-user.test.ts`: `/me`, categories, offers, `paginate`). Why it works this way: refresh tokens are single use, so each run spends the stored one and saves the rotated one before anything else uses it (the new tokens are written inside the client's `set`, which is awaited before the request goes out).
+
+What is known about Allegro's tokens, and what is not:
+
+- The access token lives about 12 hours. The refresh token lives longer; **its lifetime is not documented in anything reachable from the analysis environment** (`developer.allegro.pl` was unreachable). One developer in an [allegro-api issue](https://github.com/allegro/allegro-api/issues/10619) says "a year", unconfirmed, and Allegro staff there only point to a tutorial section on when tokens lose validity. The workflow runs on the 1st and 15th, and every run logs the refresh token's expiry if it is a JWT, so the real lifetime shows up in the job log. Adjust the schedule once known.
+- A refresh can consume the token without delivering the new one. In [allegro-api#3622](https://github.com/allegro/allegro-api/issues/3622) a 503 on `refresh_token` had already deleted the old token on Allegro's side; staff's advice was to repeat the authorization. So never retry a token request blindly (the presets do not: POST is not idempotent), and expect that a failed run may need a new bootstrap.
+- The library omits `redirect_uri` when `url_redirect` is not configured; a wrapper in the wild sends it empty. Whether Allegro cares for a valid token is unverified: the first real refresh answers it. If a freshly bootstrapped token fails with `invalid_grant` on the very first refresh, suspect this.
+
+**Setup (once)**
+
+1. Repository secrets: `ALLEGRO_CLIENT_ID`, `ALLEGRO_CLIENT_SECRET` (sandbox device app, already used by `live.yml`), `ALLEGRO_STATE_KEY` (any long random string; it encrypts the stored tokens, keep a copy elsewhere because losing it means a new bootstrap), `CI_STATE_PAT` (fine-grained personal access token limited to this repository with the permission _Variables: read and write_ and nothing else).
+2. Run the workflow with `mode = bootstrap`, open the verification URL printed in the log (also shown as a notice on the run) within the hour, and approve the sandbox app. The log shows the access token validity, the number of scopes, and the refresh token expiry. The tokens are stored in the repository variable `ALLEGRO_USER_TOKENS` (AES-256-GCM; the repository is public, so the variable holds ciphertext only).
+3. From then on the schedule keeps it fresh. Run `mode = refresh` by hand to check.
+
+**When a run fails** the job log says `Re-approval needed` for `invalid_grant`, `invalid_token` or a missing variable: run the workflow with `mode = bootstrap`. A failure to _save_ the rotated tokens (`Could not save the new tokens...`, usually an expired or mis-scoped `CI_STATE_PAT`) also breaks the chain, because the old refresh token is already spent: fix the PAT, then bootstrap. A wrong `ALLEGRO_STATE_KEY` reads as "Cannot decrypt": restore the key or bootstrap.
+
+Not done on purpose: a notification channel beyond GitHub's own failed-run email; a backup copy of the previous generation (the spent token is useless); running on pull requests (secrets are not available to forks and the run must be serialized).
+
 ## Debug a failing request or login
 
 Before guessing, check [allegro-conventions.md](allegro-conventions.md): many surprises (406 on a generic `Accept`, 415 on `application/json`, `/me` returning 500 for application tokens) are documented there. To find out how Allegro behaves right now, re-run the spike described at the end of that file.
